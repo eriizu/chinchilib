@@ -1,8 +1,8 @@
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowAttributes, WindowId};
+use winit::event;
+use winit::event_loop::EventLoop;
+use winit::window::{Window, WindowId};
 
 #[derive(Default)]
 struct App {
@@ -16,7 +16,7 @@ const HEIGHT: u32 = 240;
 const BOX_SIZE: i16 = 64;
 
 impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let mut attr = Window::default_attributes();
         let size = winit::dpi::LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         attr = attr.with_inner_size(size).with_title("Patate");
@@ -26,17 +26,40 @@ impl ApplicationHandler for App {
             Pixels::new(WIDTH, HEIGHT, surface_texture).unwrap()
         });
         self.window = Some(win);
-        // let mut input = WinitInputHelper::new();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _: WindowId,
+        event: event::WindowEvent,
+    ) {
+        use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
                 event_loop.exit();
             }
+            WindowEvent::KeyboardInput {
+                device_id: _,
+                event,
+                is_synthetic: _,
+            } if event.state == event::ElementState::Pressed => {
+                use winit::keyboard::{Key, NamedKey};
+                match event.logical_key {
+                    Key::Named(NamedKey::ArrowLeft) => self.world.box_x -= 10,
+                    Key::Named(NamedKey::ArrowRight) => self.world.box_x += 10,
+                    Key::Named(NamedKey::ArrowUp) => self.world.box_y -= 10,
+                    Key::Named(NamedKey::ArrowDown) => self.world.box_y += 10,
+                    Key::Named(NamedKey::Escape) => event_loop.exit(),
+                    _ => println!("{:?}", event),
+                }
+                self.window.as_ref().unwrap().request_redraw();
+            }
             WindowEvent::RedrawRequested => {
+                // println!("redraw");
                 if let Some(pixels) = &mut self.pixels {
+                    self.world.update();
                     self.world.draw(pixels.frame_mut());
                     if let Err(err) = pixels.render() {
                         eprintln!("aaaaaaaaaaaaaaaa");
@@ -61,7 +84,7 @@ impl ApplicationHandler for App {
                 // can render here instead.
                 self.window.as_ref().unwrap().request_redraw();
             }
-            _ => (),
+            _ => println!("{:?}", event),
         }
     }
 }
@@ -72,12 +95,12 @@ fn main() {
 
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
     // dispatched any events. This is ideal for games and similar applications.
-    event_loop.set_control_flow(ControlFlow::Poll);
+    // event_loop.set_control_flow(ControlFlow::Poll);
 
     // ControlFlow::Wait pauses the event loop if no events are available to process.
     // This is ideal for non-game applications that only update in response to user
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-    event_loop.set_control_flow(ControlFlow::Wait);
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
     let mut app = App::default();
     app.world = World::new();
