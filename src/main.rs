@@ -1,16 +1,78 @@
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::window::{Window, WindowId};
 
-#[derive(Default)]
+fn main() {
+    println!("Hello, world!");
+    let event_loop = winit::event_loop::EventLoop::new().unwrap();
+
+    // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
+    // dispatched any events. This is ideal for games and similar applications.
+    // event_loop.set_control_flow(ControlFlow::Poll);
+
+    // ControlFlow::Wait pauses the event loop if no events are available to process.
+    // This is ideal for non-game applications that only update in response to user
+    // input, and uses significantly less power/CPU time than ControlFlow::Poll.
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+
+    let mut app = App::default();
+    app.world = World::new();
+    event_loop.run_app(&mut app).unwrap();
+}
+
+// #[derive(Default)]
 struct App {
     window: Option<Window>,
     world: World,
     pixels: Option<Pixels>,
+    pause: bool,
+    timings: circular_buffer::CircularBuffer<240, std::time::Instant>,
+    last_fps_report: std::time::Instant,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            window: None,
+            world: World::default(),
+            pixels: None,
+            pause: false,
+            timings: circular_buffer::CircularBuffer::default(),
+            last_fps_report: std::time::Instant::now(),
+        }
+    }
 }
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const BOX_SIZE: i16 = 64;
+
+// INFO: source https://chatgpt.com/share/5cebcdd6-fe9d-4c5d-bf68-bc62a0b8c7df
+fn timings_avg<'a, T>(iter: T) -> Option<f64>
+where
+    T: Iterator<Item = &'a std::time::Instant>,
+{
+    let mut iter = iter.peekable();
+    let mut prev = match iter.next() {
+        Some(val) => val,
+        None => return None, // If the iterator is empty, return None
+    };
+
+    let mut count = 0;
+    let mut total_diff = 0;
+
+    while let Some(next) = iter.peek() {
+        total_diff += next.duration_since(*prev).as_millis();
+        count += 1;
+        prev = next;
+        iter.next(); // Consume the element
+    }
+
+    if count == 0 {
+        None // If there was only one element, return None
+    } else {
+        Some(total_diff as f64 / count as f64)
+    }
+}
 
 impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
@@ -36,6 +98,7 @@ impl winit::application::ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
+                println!("{}", timings_avg(self.timings.iter()).unwrap());
                 event_loop.exit();
             }
             WindowEvent::KeyboardInput {
@@ -50,11 +113,23 @@ impl winit::application::ApplicationHandler for App {
                     Key::Named(NamedKey::ArrowUp) => self.world.box_y -= 10,
                     Key::Named(NamedKey::ArrowDown) => self.world.box_y += 10,
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
+                    Key::Named(NamedKey::Space) => self.pause = !self.pause,
                     _ => println!("{:?}", event),
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }
             WindowEvent::RedrawRequested => {
+                let now = std::time::Instant::now();
+
+                self.timings.push_back(now);
+                if now.duration_since(self.last_fps_report).as_secs() >= 1 {
+                    println!(
+                        "{} fps",
+                        1000 as f64 / timings_avg(self.timings.iter()).unwrap_or(1 as f64)
+                    );
+                    self.last_fps_report = now;
+                }
+
                 // println!("redraw");
                 if let Some(pixels) = &mut self.pixels {
                     self.world.update();
@@ -80,29 +155,13 @@ impl winit::application::ApplicationHandler for App {
                 // You only need to call this if you've determined that you need to redraw in
                 // applications which do not always need to. Applications that redraw continuously
                 // can render here instead.
-                self.window.as_ref().unwrap().request_redraw();
+                if !self.pause {
+                    self.window.as_ref().unwrap().request_redraw();
+                }
             }
-            _ => println!("{:?}", event),
+            _ => {}
         }
     }
-}
-
-fn main() {
-    println!("Hello, world!");
-    let event_loop = winit::event_loop::EventLoop::new().unwrap();
-
-    // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-    // dispatched any events. This is ideal for games and similar applications.
-    // event_loop.set_control_flow(ControlFlow::Poll);
-
-    // ControlFlow::Wait pauses the event loop if no events are available to process.
-    // This is ideal for non-game applications that only update in response to user
-    // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-
-    let mut app = App::default();
-    app.world = World::new();
-    event_loop.run_app(&mut app).unwrap();
 }
 
 #[derive(Default)]
