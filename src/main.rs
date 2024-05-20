@@ -1,7 +1,4 @@
 use pixels::{Error, Pixels, SurfaceTexture};
-use winit::application::ApplicationHandler;
-use winit::event;
-use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowId};
 
 #[derive(Default)]
@@ -15,7 +12,7 @@ const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
 const BOX_SIZE: i16 = 64;
 
-impl ApplicationHandler for App {
+impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let mut attr = Window::default_attributes();
         let size = winit::dpi::LogicalSize::new(WIDTH as f64, HEIGHT as f64);
@@ -32,8 +29,9 @@ impl ApplicationHandler for App {
         &mut self,
         event_loop: &winit::event_loop::ActiveEventLoop,
         _: WindowId,
-        event: event::WindowEvent,
+        event: winit::event::WindowEvent,
     ) {
+        use winit::event;
         use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
@@ -91,7 +89,7 @@ impl ApplicationHandler for App {
 
 fn main() {
     println!("Hello, world!");
-    let event_loop = EventLoop::new().unwrap();
+    let event_loop = winit::event_loop::EventLoop::new().unwrap();
 
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
     // dispatched any events. This is ideal for games and similar applications.
