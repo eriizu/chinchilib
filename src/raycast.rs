@@ -4,8 +4,9 @@ use array2d::Array2D;
 
 pub struct World {
     map: Array2D<u8>,
-    player_pos: (usize, usize),
+    player_pos: (f32, f32),
     player_heading: f32,
+    player_fov: f32,
 }
 
 impl Default for World {
@@ -31,32 +32,73 @@ impl Default for World {
         map[(4, 4)] = 'X' as u8;
         Self {
             map,
-            player_pos: (2, 2),
+            player_pos: (2.0, 2.0),
             player_heading: 0.0,
+            player_fov: degs_to_rads(70),
         }
     }
 }
 
 impl World {
-    fn is_wall(&self, coords: (usize, usize)) -> bool {
-        self.map.row_len() <= coords.0
-            || self.map.column_len() <= coords.1
-            || self.map[coords] == 'x' as u8
+    fn is_wall(&self, coords: (f32, f32)) -> bool {
+        let coords = (coords.0 as usize, coords.1 as usize);
+        coords.0 >= self.map.row_len()
+            || coords.1 >= self.map.column_len()
+            || self.map[coords] == 'X' as u8
     }
 
     fn distance_to_wall(&self, heading: f32) -> f32 {
         let mut distance: f32 = 0.0;
-        let mut coords = move_forward_floored(self.player_pos, heading, distance);
+        let mut coords = move_forward(self.player_pos, heading, distance);
         while !self.is_wall(coords) {
             distance += 0.1;
-            coords = move_forward_floored(self.player_pos, heading, distance);
+            coords = move_forward(self.player_pos, heading, distance);
         }
         return distance;
     }
 
     pub fn distance_to_walls<'a>(&'a self, ray_quantity: usize) -> impl Iterator<Item = f32> + 'a {
-        generate_ray_angles(ray_quantity, degs_to_rads(70))
-            .map(|angle| self.distance_to_wall(angle + std::f32::consts::FRAC_PI_3))
+        generate_ray_angles(ray_quantity, self.player_fov)
+            .map(|angle| self.distance_to_wall(angle + self.player_heading))
+    }
+
+    pub fn pan_left(&mut self) {
+        self.player_heading += std::f32::consts::FRAC_PI_8;
+        log::debug!("heading {}", rads_to_deg(self.player_heading));
+    }
+    pub fn pan_right(&mut self) {
+        self.player_heading -= std::f32::consts::FRAC_PI_8;
+        log::debug!("heading {}", rads_to_deg(self.player_heading));
+    }
+
+    pub fn move_forward(&mut self) {
+        self.player_pos = move_forward(self.player_pos, self.player_heading, 0.2);
+        log::debug!("pos {:?}", self.player_pos);
+    }
+
+    pub fn move_backwards(&mut self) {
+        self.player_pos = move_forward(
+            self.player_pos,
+            std::f32::consts::PI + self.player_heading,
+            0.2,
+        );
+        log::debug!("pos {:?}", self.player_pos);
+    }
+    pub fn move_left(&mut self) {
+        self.player_pos = move_forward(
+            self.player_pos,
+            std::f32::consts::FRAC_PI_2 + self.player_heading,
+            0.2,
+        );
+        log::debug!("pos {:?}", self.player_pos);
+    }
+    pub fn move_right(&mut self) {
+        self.player_pos = move_forward(
+            self.player_pos,
+            self.player_heading - std::f32::consts::FRAC_PI_2,
+            0.2,
+        );
+        log::debug!("pos {:?}", self.player_pos);
     }
 }
 
@@ -72,11 +114,8 @@ pub fn move_forward_floored(pos: (usize, usize), direction: f32, distance: f32) 
 }
 
 fn generate_ray_angles(ray_quantity: usize, fov: f32) -> impl Iterator<Item = f32> {
-    // const FOV: f32 = 1.22173;
     let lower_half = (fov / 2.0) * -1.0;
     let step = fov / (ray_quantity - 1) as f32;
-    // log::debug!("{}", lower_half);
-    // log::debug!("{}", step);
     (0..ray_quantity)
         .enumerate()
         .map(move |(idx, _)| (step * idx as f32) + lower_half)
@@ -86,6 +125,7 @@ fn degs_to_rads(degs: u32) -> f32 {
     degs as f32 * (std::f32::consts::PI / 180.0)
 }
 
+#[allow(dead_code)]
 fn rads_to_deg(rads: f32) -> u32 {
     (rads * (180.0 / std::f32::consts::PI)) as u32
 }

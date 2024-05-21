@@ -13,4 +13,4 @@ rgb = "0.8.37"
 winit = { version = "0.30.0", features = ["rwh_06", "rwh_05", "rwh_04", "x11"], default-features = false }
 
 [lints.rust]
-unused = "allow"
+# unused = "allow"

@@ -1,7 +1,10 @@
 use std::usize;
 
-use pixels::{Error, Pixels, SurfaceTexture};
-use winit::window::{Window, WindowId};
+use pixels::{Pixels, SurfaceTexture};
+use winit::{
+    keyboard::{self, SmolStr},
+    window::{Window, WindowId},
+};
 
 mod raycast;
 
@@ -21,14 +24,12 @@ fn main() {
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
     let mut app = App::default();
-    app.world = World::new();
     event_loop.run_app(&mut app).unwrap();
 }
 
 // #[derive(Default)]
 struct App {
     window: Option<Window>,
-    world: World,
     pixels: Option<Pixels>,
     pause: bool,
     timings: circular_buffer::CircularBuffer<240, std::time::Instant>,
@@ -40,7 +41,6 @@ impl Default for App {
     fn default() -> Self {
         Self {
             window: None,
-            world: World::default(),
             pixels: None,
             pause: false,
             timings: circular_buffer::CircularBuffer::default(),
@@ -50,9 +50,8 @@ impl Default for App {
     }
 }
 
-const WIDTH: u32 = 320;
-const HEIGHT: u32 = 240;
-const BOX_SIZE: i16 = 64;
+const WIDTH: usize = 320;
+const HEIGHT: usize = 240;
 
 // INFO: source https://chatgpt.com/share/5cebcdd6-fe9d-4c5d-bf68-bc62a0b8c7df
 fn timings_avg<'a, T>(iter: T) -> Option<u128>
@@ -85,12 +84,13 @@ where
 impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let mut attr = Window::default_attributes();
-        let size = winit::dpi::LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        attr = attr.with_inner_size(size).with_title("Patate");
+        // FIXME: don't need to use logical size: pixels doesn't support different DPIs
+        let size = winit::dpi::PhysicalSize::new(WIDTH as u16, HEIGHT as u16);
+        attr = attr.with_inner_size(size).with_title("Raycaster");
         let win = event_loop.create_window(attr).unwrap();
         self.pixels = Some({
-            let surface_texture = SurfaceTexture::new(WIDTH, HEIGHT, &win);
-            Pixels::new(WIDTH, HEIGHT, surface_texture).unwrap()
+            let surface_texture = SurfaceTexture::new(WIDTH as u32, HEIGHT as u32, &win);
+            Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture).unwrap()
         });
         self.window = Some(win);
     }
@@ -109,6 +109,12 @@ impl winit::application::ApplicationHandler for App {
                 log::info!("{}", timings_avg(self.timings.iter()).unwrap());
                 event_loop.exit();
             }
+            WindowEvent::Resized(size) => {
+                let size: winit::dpi::LogicalSize<f64> = winit::dpi::LogicalSize::from_physical(
+                    size,
+                    self.window.as_ref().unwrap().scale_factor(),
+                );
+            }
             WindowEvent::KeyboardInput {
                 device_id: _,
                 event,
@@ -116,10 +122,12 @@ impl winit::application::ApplicationHandler for App {
             } if event.state == event::ElementState::Pressed => {
                 use winit::keyboard::{Key, NamedKey};
                 match event.logical_key {
-                    Key::Named(NamedKey::ArrowLeft) => self.world.box_x -= 10,
-                    Key::Named(NamedKey::ArrowRight) => self.world.box_x += 10,
-                    Key::Named(NamedKey::ArrowUp) => self.world.box_y -= 10,
-                    Key::Named(NamedKey::ArrowDown) => self.world.box_y += 10,
+                    Key::Named(NamedKey::ArrowLeft) => self.raycast.move_left(),
+                    Key::Named(NamedKey::ArrowRight) => self.raycast.move_right(),
+                    Key::Named(NamedKey::ArrowUp) => self.raycast.move_forward(),
+                    Key::Named(NamedKey::ArrowDown) => self.raycast.move_backwards(),
+                    Key::Character(a) if a == "a" => self.raycast.pan_left(),
+                    Key::Character(a) if a == "e" => self.raycast.pan_right(),
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
                     Key::Named(NamedKey::Space) => {
                         self.pause = !self.pause;
@@ -136,18 +144,21 @@ impl winit::application::ApplicationHandler for App {
                 self.timings.push_back(now);
                 if now.duration_since(self.last_fps_report).as_secs() >= 1 {
                     if let Some(avg) = timings_avg(self.timings.iter()) {
-                        log::info!("{} fps", 1000 / avg);
+                        // log::info!("{} fps", 1000 / avg);
                     }
                     self.last_fps_report = now;
                 }
 
-                // println!("redraw");
                 if let Some(pixels) = &mut self.pixels {
-                    self.world.update();
-                    self.world.draw(pixels.frame_mut());
+                    pixels.clear_color(pixels::wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 255.0,
+                        a: 255.0,
+                    });
                     put_pixel1(
                         pixels.frame_mut(),
-                        WIDTH as usize,
+                        WIDTH,
                         10,
                         10,
                         rgb::RGBA {
@@ -159,9 +170,9 @@ impl winit::application::ApplicationHandler for App {
                     );
                     put_pixel1(
                         pixels.frame_mut(),
-                        WIDTH as usize,
-                        WIDTH as usize - 10,
-                        HEIGHT as usize - 10,
+                        WIDTH,
+                        WIDTH - 10,
+                        HEIGHT - 10,
                         rgb::RGBA {
                             r: 255,
                             g: 0,
@@ -170,21 +181,18 @@ impl winit::application::ApplicationHandler for App {
                         },
                     );
                     self.raycast
-                        .distance_to_walls(WIDTH.try_into().unwrap())
-                        .map(|distance| {
-                            dbg!(distance);
-                            (HEIGHT as f32 / distance) as usize
-                        })
+                        .distance_to_walls(WIDTH)
+                        .map(|distance| (HEIGHT as f32 / distance) as usize)
                         .enumerate()
                         .for_each(|(idx, mut col_height)| {
-                            log::debug!("{}, {}", idx, col_height);
-                            if col_height > HEIGHT as usize {
-                                col_height = HEIGHT as usize;
+                            // log::debug!("{}, {}", idx, col_height);
+                            if col_height > HEIGHT {
+                                col_height = HEIGHT;
                             }
                             draw_centered_col(
                                 pixels.frame_mut(),
-                                WIDTH as usize,
-                                HEIGHT as usize,
+                                WIDTH,
+                                HEIGHT,
                                 idx,
                                 col_height,
                                 rgb::RGBA {
@@ -197,24 +205,9 @@ impl winit::application::ApplicationHandler for App {
                         });
                     if let Err(err) = pixels.render() {
                         log::error!("failed to render with error {}", err);
-                        // log_error("pixels.render", err);
-                        // *control_flow = ControlFlow::Exit;
                         return;
                     }
                 }
-                // Redraw the application.
-                //
-                // It's preferable for applications that do not render continuously to render in
-                // this event rather than in AboutToWait, since rendering in here allows
-                // the program to gracefully handle redraws requested by the OS.
-
-                // Draw.
-
-                // Queue a RedrawRequested event.
-                //
-                // You only need to call this if you've determined that you need to redraw in
-                // applications which do not always need to. Applications that redraw continuously
-                // can render here instead.
                 if !self.pause {
                     self.window.as_ref().unwrap().request_redraw();
                 }
@@ -224,79 +217,9 @@ impl winit::application::ApplicationHandler for App {
     }
 }
 
-#[derive(Default)]
-struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
-    // box_pos: (i16, i16),
-    // velocity: (i16, i16),
-}
-
-impl World {
-    /// Create a new `World` instance that can draw a moving box.
-    fn new() -> Self {
-        Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 1,
-            velocity_y: 1,
-        }
-    }
-
-    /// Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
-        if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
-            self.velocity_x *= -1;
-        }
-        if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
-            self.velocity_y *= -1;
-        }
-
-        self.box_x += self.velocity_x;
-        self.box_y += self.velocity_y;
-    }
-
-    /// Draw the `World` state to the frame buffer.
-    ///
-    /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
-    fn draw(&self, frame: &mut [u8]) {
-        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-
-            let inside_the_box = x >= self.box_x
-                && x < self.box_x + BOX_SIZE
-                && y >= self.box_y
-                && y < self.box_y + BOX_SIZE;
-
-            let rgba = if inside_the_box {
-                [0x5e, 0x48, 0xe8, 0xff]
-            } else {
-                [0x48, 0xb2, 0xe8, 0xff]
-            };
-
-            pixel.copy_from_slice(&rgba);
-        }
-    }
-}
-
-fn put_pixel(frame: &mut [u8], width: u32, x: u32, y: u32, color: rgb::RGBA8) {
-    use rgb::*;
-    let idx = (width * y + x) * 4;
-    let idx: usize = idx.try_into().unwrap();
-    if idx <= frame.len() - 4 {
-        let pixel = &mut frame[idx..idx + 4];
-        pixel.copy_from_slice(color.as_slice());
-    } else {
-        log::warn!("impossible value {}", idx);
-    }
-}
-
 pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
     use rgb::*;
-    let idx = (width * y + x);
+    let idx = width * y + x;
     frame.as_rgba_mut()[idx] = color;
 }
 
@@ -309,9 +232,35 @@ pub fn draw_centered_col(
     color: rgb::RGBA8,
 ) {
     let mid = height / 2;
-    dbg!(mid);
-    dbg!(col_height);
     let up_bound = mid - (col_height / 2);
     let low_bound = mid + (col_height / 2);
+    (0..up_bound).for_each(|y| {
+        put_pixel1(
+            frame,
+            width,
+            x,
+            y,
+            rgb::RGBA {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+        )
+    });
     (up_bound..low_bound).for_each(|y| put_pixel1(frame, width, x, y, color));
+    (low_bound..height).for_each(|y| {
+        put_pixel1(
+            frame,
+            width,
+            x,
+            y,
+            rgb::RGBA {
+                r: 0,
+                g: 0,
+                b: 255,
+                a: 255,
+            },
+        )
+    });
 }
