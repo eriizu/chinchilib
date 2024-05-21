@@ -1,8 +1,14 @@
+use std::usize;
+
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::window::{Window, WindowId};
 
+mod raycast;
+
 fn main() {
-    println!("Hello, world!");
+    env_logger::init();
+
+    log::info!("Hello, world!");
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
 
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -27,6 +33,7 @@ struct App {
     pause: bool,
     timings: circular_buffer::CircularBuffer<240, std::time::Instant>,
     last_fps_report: std::time::Instant,
+    raycast: raycast::World,
 }
 
 impl Default for App {
@@ -38,6 +45,7 @@ impl Default for App {
             pause: false,
             timings: circular_buffer::CircularBuffer::default(),
             last_fps_report: std::time::Instant::now(),
+            raycast: raycast::World::default(),
         }
     }
 }
@@ -47,7 +55,7 @@ const HEIGHT: u32 = 240;
 const BOX_SIZE: i16 = 64;
 
 // INFO: source https://chatgpt.com/share/5cebcdd6-fe9d-4c5d-bf68-bc62a0b8c7df
-fn timings_avg<'a, T>(iter: T) -> Option<f64>
+fn timings_avg<'a, T>(iter: T) -> Option<u128>
 where
     T: Iterator<Item = &'a std::time::Instant>,
 {
@@ -70,7 +78,7 @@ where
     if count == 0 {
         None // If there was only one element, return None
     } else {
-        Some(total_diff as f64 / count as f64)
+        Some(total_diff / count)
     }
 }
 
@@ -97,8 +105,8 @@ impl winit::application::ApplicationHandler for App {
         use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
-                println!("{}", timings_avg(self.timings.iter()).unwrap());
+                log::info!("The close button was pressed; stopping");
+                log::info!("{}", timings_avg(self.timings.iter()).unwrap());
                 event_loop.exit();
             }
             WindowEvent::KeyboardInput {
@@ -113,8 +121,12 @@ impl winit::application::ApplicationHandler for App {
                     Key::Named(NamedKey::ArrowUp) => self.world.box_y -= 10,
                     Key::Named(NamedKey::ArrowDown) => self.world.box_y += 10,
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
-                    Key::Named(NamedKey::Space) => self.pause = !self.pause,
-                    _ => println!("{:?}", event),
+                    Key::Named(NamedKey::Space) => {
+                        self.pause = !self.pause;
+                        self.timings.clear();
+                        self.last_fps_report = std::time::Instant::now();
+                    }
+                    _ => log::debug!("kb event {:?}", event),
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -123,10 +135,9 @@ impl winit::application::ApplicationHandler for App {
 
                 self.timings.push_back(now);
                 if now.duration_since(self.last_fps_report).as_secs() >= 1 {
-                    println!(
-                        "{} fps",
-                        1000 as f64 / timings_avg(self.timings.iter()).unwrap_or(1 as f64)
-                    );
+                    if let Some(avg) = timings_avg(self.timings.iter()) {
+                        log::info!("{} fps", 1000 / avg);
+                    }
                     self.last_fps_report = now;
                 }
 
@@ -134,9 +145,58 @@ impl winit::application::ApplicationHandler for App {
                 if let Some(pixels) = &mut self.pixels {
                     self.world.update();
                     self.world.draw(pixels.frame_mut());
+                    put_pixel1(
+                        pixels.frame_mut(),
+                        WIDTH as usize,
+                        10,
+                        10,
+                        rgb::RGBA {
+                            r: 255,
+                            g: 0,
+                            b: 0,
+                            a: 255,
+                        },
+                    );
+                    put_pixel1(
+                        pixels.frame_mut(),
+                        WIDTH as usize,
+                        WIDTH as usize - 10,
+                        HEIGHT as usize - 10,
+                        rgb::RGBA {
+                            r: 255,
+                            g: 0,
+                            b: 0,
+                            a: 255,
+                        },
+                    );
+                    self.raycast
+                        .distance_to_walls(WIDTH.try_into().unwrap())
+                        .map(|distance| {
+                            dbg!(distance);
+                            (HEIGHT as f32 / distance) as usize
+                        })
+                        .enumerate()
+                        .for_each(|(idx, mut col_height)| {
+                            log::debug!("{}, {}", idx, col_height);
+                            if col_height > HEIGHT as usize {
+                                col_height = HEIGHT as usize;
+                            }
+                            draw_centered_col(
+                                pixels.frame_mut(),
+                                WIDTH as usize,
+                                HEIGHT as usize,
+                                idx,
+                                col_height,
+                                rgb::RGBA {
+                                    r: 255,
+                                    g: 0,
+                                    b: 0,
+                                    a: 255,
+                                },
+                            );
+                        });
                     if let Err(err) = pixels.render() {
-                        eprintln!("aaaaaaaaaaaaaaaa");
-                        eprintln!("{}", err);
+                        log::error!("failed to render with error {}", err);
                         // log_error("pixels.render", err);
                         // *control_flow = ControlFlow::Exit;
                         return;
@@ -220,4 +280,38 @@ impl World {
             pixel.copy_from_slice(&rgba);
         }
     }
+}
+
+fn put_pixel(frame: &mut [u8], width: u32, x: u32, y: u32, color: rgb::RGBA8) {
+    use rgb::*;
+    let idx = (width * y + x) * 4;
+    let idx: usize = idx.try_into().unwrap();
+    if idx <= frame.len() - 4 {
+        let pixel = &mut frame[idx..idx + 4];
+        pixel.copy_from_slice(color.as_slice());
+    } else {
+        log::warn!("impossible value {}", idx);
+    }
+}
+
+pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
+    use rgb::*;
+    let idx = (width * y + x);
+    frame.as_rgba_mut()[idx] = color;
+}
+
+pub fn draw_centered_col(
+    frame: &mut [u8],
+    width: usize,
+    height: usize,
+    x: usize,
+    col_height: usize,
+    color: rgb::RGBA8,
+) {
+    let mid = height / 2;
+    dbg!(mid);
+    dbg!(col_height);
+    let up_bound = mid - (col_height / 2);
+    let low_bound = mid + (col_height / 2);
+    (up_bound..low_bound).for_each(|y| put_pixel1(frame, width, x, y, color));
 }
