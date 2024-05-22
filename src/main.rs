@@ -24,7 +24,20 @@ fn main() {
     event_loop.run_app(&mut app).unwrap();
 }
 
-// #[derive(Default)]
+#[derive(Eq, Hash, PartialEq)]
+enum MyKeys {
+    KeyA,
+    KeyZ,
+    KeyE,
+    KeyQ,
+    KeyS,
+    KeyD,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 struct App {
     window: Option<Window>,
     pixels: Option<Pixels>,
@@ -34,6 +47,7 @@ struct App {
     raycast: raycast::World,
     height: usize,
     width: usize,
+    pressed_keys: std::collections::HashSet<MyKeys>,
 }
 
 impl Default for App {
@@ -47,6 +61,7 @@ impl Default for App {
             raycast: raycast::World::default(),
             height: 240,
             width: 320,
+            pressed_keys: std::collections::HashSet::new(),
         }
     }
 }
@@ -118,27 +133,52 @@ impl winit::application::ApplicationHandler for App {
                 device_id: _,
                 event,
                 is_synthetic: _,
-            } if event.state == event::ElementState::Pressed => {
+            } => {
                 use raycast::Heading::*;
                 use winit::keyboard::{Key, NamedKey};
-                match event.logical_key {
-                    Key::Named(NamedKey::ArrowLeft) => self.raycast.move_player(Left),
-                    Key::Character(name) if name == "q" => self.raycast.move_player(Left),
-                    Key::Named(NamedKey::ArrowRight) => self.raycast.move_player(Right),
-                    Key::Character(name) if name == "d" => self.raycast.move_player(Right),
-                    Key::Named(NamedKey::ArrowUp) => self.raycast.move_player(Forward),
-                    Key::Character(name) if name == "z" => self.raycast.move_player(Forward),
-                    Key::Named(NamedKey::ArrowDown) => self.raycast.move_player(Backward),
-                    Key::Character(name) if name == "s" => self.raycast.move_player(Backward),
-                    Key::Character(a) if a == "a" => self.raycast.pan_left(),
-                    Key::Character(a) if a == "e" => self.raycast.pan_right(),
-                    Key::Named(NamedKey::Escape) => event_loop.exit(),
-                    Key::Named(NamedKey::Space) => {
-                        self.pause = !self.pause;
-                        self.timings.clear();
-                        self.last_fps_report = std::time::Instant::now();
+                if let Some(my_key) = match &event.logical_key {
+                    Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
+                    Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
+                    Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
+                    Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
+                    Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
+                    Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
+                    Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
+                    Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
+                    Key::Character(a) if a == "a" => Some(MyKeys::KeyA),
+                    Key::Character(a) if a == "e" => Some(MyKeys::KeyE),
+                    _ => None,
+                } {
+                    if event.state == event::ElementState::Pressed {
+                        self.pressed_keys.insert(my_key);
+                    } else if event.state == event::ElementState::Released {
+                        self.pressed_keys.remove(&my_key);
                     }
-                    _ => log::debug!("unused kb event {:?}", event),
+                };
+                for key in &self.pressed_keys {
+                    match key {
+                        MyKeys::Left => self.raycast.move_player(Left),
+                        MyKeys::KeyQ => self.raycast.move_player(Left),
+                        MyKeys::Right => self.raycast.move_player(Right),
+                        MyKeys::KeyD => self.raycast.move_player(Right),
+                        MyKeys::Up => self.raycast.move_player(Forward),
+                        MyKeys::KeyZ => self.raycast.move_player(Forward),
+                        MyKeys::Down => self.raycast.move_player(Backward),
+                        MyKeys::KeyS => self.raycast.move_player(Backward),
+                        MyKeys::KeyA => self.raycast.pan_left(),
+                        MyKeys::KeyE => self.raycast.pan_right(),
+                    }
+                }
+                if event.state == event::ElementState::Pressed {
+                    match event.logical_key {
+                        Key::Named(NamedKey::Escape) => event_loop.exit(),
+                        Key::Named(NamedKey::Space) => {
+                            self.pause = !self.pause;
+                            self.timings.clear();
+                            self.last_fps_report = std::time::Instant::now();
+                        }
+                        _ => {}
+                    }
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -184,21 +224,25 @@ impl winit::application::ApplicationHandler for App {
                             a: 255,
                         },
                     );
-                    self.raycast
-                        .distance_to_walls(self.width)
-                        .map(|distance| (self.height as f32 / distance) as usize)
-                        .enumerate()
-                        .for_each(|(idx, mut col_height)| {
-                            // log::debug!("{}, {}", idx, col_height);
-                            if col_height > self.height {
-                                col_height = self.height;
-                            }
-                            draw_centered_col(
+                    if self.pause {
+                        put_pixel1(
+                            pixels.frame_mut(),
+                            self.width,
+                            (self.raycast.player_pos.0 * 50.0) as usize,
+                            (self.raycast.player_pos.1 * 50.0) as usize,
+                            rgb::RGBA {
+                                r: 0,
+                                g: 255,
+                                b: 0,
+                                a: 255,
+                            },
+                        );
+                        self.raycast.pos_of_hits(5).for_each(|(x, y)| {
+                            put_pixel1(
                                 pixels.frame_mut(),
                                 self.width,
-                                self.height,
-                                idx,
-                                col_height,
+                                (x * 50.0) as usize,
+                                (y * 50.0) as usize,
                                 rgb::RGBA {
                                     r: 255,
                                     g: 0,
@@ -207,6 +251,32 @@ impl winit::application::ApplicationHandler for App {
                                 },
                             );
                         });
+                    } else {
+                        self.raycast
+                            .distance_to_walls(self.width)
+                            .map(|distance| (self.height as f32 / distance) as usize)
+                            .enumerate()
+                            .for_each(|(idx, mut col_height)| {
+                                // log::debug!("{}, {}", idx, col_height);
+                                if col_height > self.height {
+                                    col_height = self.height;
+                                }
+                                draw_centered_col(
+                                    pixels.frame_mut(),
+                                    self.width,
+                                    self.height,
+                                    idx,
+                                    col_height,
+                                    rgb::RGBA {
+                                        r: 255,
+                                        g: 0,
+                                        b: 0,
+                                        a: 255,
+                                    },
+                                );
+                            });
+                    }
+
                     if let Err(err) = pixels.render() {
                         log::error!("failed to render with error {}", err);
                         return;

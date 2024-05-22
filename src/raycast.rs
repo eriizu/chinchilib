@@ -4,8 +4,8 @@ use array2d::Array2D;
 
 pub struct World {
     map: Array2D<u8>,
-    player_pos: (f32, f32),
-    player_heading: f32,
+    pub player_pos: (f32, f32),
+    pub player_heading: f32,
     player_fov: f32,
 }
 
@@ -54,27 +54,32 @@ impl World {
             || self.map[coords] == 'X' as u8
     }
 
-    fn distance_to_wall(&self, heading: f32) -> f32 {
+    fn distance_to_wall(&self, heading: f32) -> (f32, (f32, f32)) {
         let mut distance: f32 = 0.0;
         let mut coords = move_forward(self.player_pos, heading, distance);
         while !self.is_wall(coords) {
             distance += 0.01;
             coords = move_forward(self.player_pos, heading, distance);
         }
-        return distance;
+        return (distance, coords);
     }
 
     pub fn distance_to_walls<'a>(&'a self, ray_quantity: usize) -> impl Iterator<Item = f32> + 'a {
         generate_ray_angles(ray_quantity, self.player_fov)
-            .map(|angle| self.distance_to_wall(angle + self.player_heading))
+            .map(|angle| self.distance_to_wall(angle + self.player_heading).0)
+    }
+
+    pub fn pos_of_hits<'a>(&'a self, ray_quantity: usize) -> impl Iterator<Item = (f32, f32)> + 'a {
+        generate_ray_angles(ray_quantity, self.player_fov)
+            .map(|angle| self.distance_to_wall(angle + self.player_heading).1)
     }
 
     pub fn pan_left(&mut self) {
-        self.player_heading -= std::f32::consts::FRAC_PI_8;
+        self.player_heading -= std::f32::consts::FRAC_PI_8 / 2.0;
         log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
     pub fn pan_right(&mut self) {
-        self.player_heading += std::f32::consts::FRAC_PI_8;
+        self.player_heading += std::f32::consts::FRAC_PI_8 / 2.0;
         log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
 
@@ -86,7 +91,7 @@ impl World {
                 Heading::Left => 0.0 - std::f32::consts::FRAC_PI_2,
                 Heading::Right => std::f32::consts::FRAC_PI_2,
             };
-        let new_pos = move_forward(self.player_pos, patate, 0.2);
+        let new_pos = move_forward(self.player_pos, patate, 0.05);
         if !self.is_wall(new_pos) {
             self.player_pos = new_pos;
         }
