@@ -123,7 +123,7 @@ impl winit::application::ApplicationHandler for App {
         self.window.as_ref().unwrap().request_redraw();
     }
 
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.pressed_keys.len() != 0 {
             self.window.as_ref().unwrap().request_redraw();
         }
@@ -135,7 +135,6 @@ impl winit::application::ApplicationHandler for App {
         _: WindowId,
         event: winit::event::WindowEvent,
     ) {
-        use winit::event;
         use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
@@ -143,57 +142,13 @@ impl winit::application::ApplicationHandler for App {
                 log::info!("{}", timings_avg(self.timings.iter()).unwrap());
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => {
-                self.width = size.width as usize;
-                self.height = size.height as usize;
-                if let Some(pixels) = &mut self.pixels {
-                    pixels.resize_surface(size.width, size.height).unwrap();
-                    pixels.resize_buffer(size.width, size.height).unwrap();
-                }
-                self.distances.resize(self.width, 0);
-                self.window.as_ref().unwrap().request_redraw();
-            }
+            WindowEvent::Resized(size) => self.process_resize(size),
             WindowEvent::KeyboardInput {
                 device_id: _,
                 event,
                 is_synthetic: _,
-            } if event.repeat == false => {
-                use winit::keyboard::{Key, NamedKey};
-                if let Some(my_key) = match &event.logical_key {
-                    Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
-                    Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
-                    Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
-                    Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
-                    Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
-                    Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
-                    Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
-                    Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
-                    Key::Character(a) if a == "a" => Some(MyKeys::KeyA),
-                    Key::Character(a) if a == "e" => Some(MyKeys::KeyE),
-                    _ => None,
-                } {
-                    if event.state == event::ElementState::Pressed {
-                        self.pressed_keys.insert(my_key);
-                    } else if event.state == event::ElementState::Released {
-                        self.pressed_keys.remove(&my_key);
-                    }
-                };
-                if event.state == event::ElementState::Pressed {
-                    match event.logical_key {
-                        Key::Named(NamedKey::Escape) => event_loop.exit(),
-                        Key::Named(NamedKey::Space) => {
-                            self.pause = !self.pause;
-                            self.timings.clear();
-                            self.last_fps_report = std::time::Instant::now();
-                        }
-                        _ => {}
-                    }
-                }
-                // if self.pressed_keys.len() != 0 {
-                //     self.window.as_ref().unwrap().request_redraw();
-                // }
-            }
-            WindowEvent::RedrawRequested => self.render(),
+            } if event.repeat == false => self.process_kbd_input(event, event_loop),
+            WindowEvent::RedrawRequested => self.process_redraw(),
             _ => {}
         }
     }
@@ -212,7 +167,7 @@ impl App {
         }
     }
 
-    fn render(&mut self) {
+    fn process_redraw(&mut self) {
         use raycast::Heading::*;
         use MyKeys;
         for key in &self.pressed_keys {
@@ -318,6 +273,58 @@ impl App {
                 },
             );
         });
+    }
+
+    fn process_kbd_input(
+        &mut self,
+        event: winit::event::KeyEvent,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+    ) {
+        use winit::keyboard::{Key, NamedKey};
+        if let Some(my_key) = match &event.logical_key {
+            Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
+            Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
+            Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
+            Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
+            Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
+            Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
+            Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
+            Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
+            Key::Character(a) if a == "a" => Some(MyKeys::KeyA),
+            Key::Character(a) if a == "e" => Some(MyKeys::KeyE),
+            _ => None,
+        } {
+            if event.state == winit::event::ElementState::Pressed {
+                self.pressed_keys.insert(my_key);
+            } else if event.state == winit::event::ElementState::Released {
+                self.pressed_keys.remove(&my_key);
+            }
+        };
+        // if self.pressed_keys.len() != 0 {
+        //     self.window.as_ref().unwrap().request_redraw();
+        // }
+        if event.state == winit::event::ElementState::Pressed {
+            match event.logical_key {
+                Key::Named(NamedKey::Escape) => event_loop.exit(),
+                Key::Named(NamedKey::Space) => {
+                    self.pause = !self.pause;
+                    self.timings.clear();
+                    self.last_fps_report = std::time::Instant::now();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn process_resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
+        self.width = size.width as usize;
+        self.height = size.height as usize;
+        if let Some(pixels) = &mut self.pixels {
+            pixels.resize_surface(size.width, size.height).unwrap();
+            pixels.resize_buffer(size.width, size.height).unwrap();
+        }
+        self.distances.resize(self.width, 0);
+        self.window.as_ref().unwrap().request_redraw();
     }
 }
 
