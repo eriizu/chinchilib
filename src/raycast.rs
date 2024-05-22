@@ -75,11 +75,17 @@ impl World {
     }
 
     pub fn pan_left(&mut self) {
-        self.player_heading -= std::f32::consts::FRAC_PI_8 / 2.0;
+        self.player_heading -= std::f32::consts::FRAC_PI_8 / 4.0;
+        if self.player_heading.is_sign_negative() {
+            self.player_heading += std::f32::consts::TAU;
+        }
         log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
     pub fn pan_right(&mut self) {
-        self.player_heading += std::f32::consts::FRAC_PI_8 / 2.0;
+        self.player_heading += std::f32::consts::FRAC_PI_8 / 4.0;
+        if self.player_heading > std::f32::consts::TAU {
+            self.player_heading -= std::f32::consts::TAU;
+        }
         log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
 
