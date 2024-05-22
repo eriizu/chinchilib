@@ -7,7 +7,7 @@ pub struct World {
     map: Array2D<u8>,
     pub player_pos: (f32, f32),
     pub player_heading: f32,
-    player_fov: f32,
+    pub player_fov: f32,
 }
 
 impl Default for World {
@@ -55,7 +55,7 @@ impl World {
             || self.map[coords] == 'X' as u8
     }
 
-    fn distance_to_wall(&self, heading: f32) -> (f32, (f32, f32)) {
+    pub fn distance_to_wall(&self, heading: f32) -> (f32, (f32, f32)) {
         let mut distance: f32 = 0.0;
         let mut coords = move_forward(self.player_pos, heading, distance);
         while !self.is_wall(coords) {
@@ -86,14 +86,14 @@ impl World {
         if self.player_heading.is_sign_negative() {
             self.player_heading += std::f32::consts::TAU;
         }
-        log::debug!("heading {}", rads_to_deg(self.player_heading));
+        // log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
     pub fn pan_right(&mut self) {
         self.player_heading += std::f32::consts::FRAC_PI_8 / 4.0;
         if self.player_heading > std::f32::consts::TAU {
             self.player_heading -= std::f32::consts::TAU;
         }
-        log::debug!("heading {}", rads_to_deg(self.player_heading));
+        // log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
 
     pub fn move_player(&mut self, heading: Heading) {
@@ -122,7 +122,10 @@ pub fn move_forward_floored(pos: (usize, usize), direction: f32, distance: f32) 
     (x as usize, y as usize)
 }
 
-fn generate_ray_angles(ray_quantity: usize, fov: f32) -> impl ParallelIterator<Item = f32> {
+pub fn generate_ray_angles(
+    ray_quantity: usize,
+    fov: f32,
+) -> impl IndexedParallelIterator<Item = f32> {
     let lower_half = (fov / 2.0) * -1.0;
     let step = fov / (ray_quantity - 1) as f32;
     (0..ray_quantity)

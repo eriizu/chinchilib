@@ -52,6 +52,7 @@ struct App {
     height: usize,
     width: usize,
     pressed_keys: std::collections::HashSet<MyKeys>,
+    distances: Vec<usize>,
 }
 
 impl Default for App {
@@ -66,6 +67,7 @@ impl Default for App {
             height: 240,
             width: 320,
             pressed_keys: std::collections::HashSet::new(),
+            distances: Vec::with_capacity(320),
         }
     }
 }
@@ -118,6 +120,13 @@ impl winit::application::ApplicationHandler for App {
                 a: 255.0,
             });
         self.window = Some(win);
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if self.pressed_keys.len() != 0 {
+            self.window.as_ref().unwrap().request_redraw();
+        }
     }
 
     fn window_event(
@@ -141,6 +150,8 @@ impl winit::application::ApplicationHandler for App {
                     pixels.resize_surface(size.width, size.height).unwrap();
                     pixels.resize_buffer(size.width, size.height).unwrap();
                 }
+                self.distances.resize(self.width, 0);
+                self.window.as_ref().unwrap().request_redraw();
             }
             WindowEvent::KeyboardInput {
                 device_id: _,
@@ -178,7 +189,9 @@ impl winit::application::ApplicationHandler for App {
                         _ => {}
                     }
                 }
-                self.window.as_ref().unwrap().request_redraw();
+                // if self.pressed_keys.len() != 0 {
+                //     self.window.as_ref().unwrap().request_redraw();
+                // }
             }
             WindowEvent::RedrawRequested => self.render(),
             _ => {}
@@ -229,36 +242,49 @@ impl App {
         }
         // if !self.pause {
         // }
-        self.window.as_ref().unwrap().request_redraw();
+        // self.window.as_ref().unwrap().request_redraw();
     }
 
     fn render_fpv(&mut self) {
         let pixels = &mut self.pixels.as_mut().unwrap();
-        let patate: Vec<usize> = self
-            .raycast
-            .distance_to_walls(self.width)
-            .map(|distance| (self.height as f32 / distance) as usize)
-            .collect();
-        patate.iter().enumerate().for_each(|(idx, col_height)| {
-            // log::debug!("{}, {}", idx, col_height);
-            let mut col_height = *col_height;
-            if col_height > self.height {
-                col_height = self.height;
-            }
-            draw_centered_col(
-                pixels.frame_mut(),
+
+        self.distances
+            .par_iter_mut()
+            .zip(raycast::generate_ray_angles(
                 self.width,
-                self.height,
-                idx,
-                col_height,
-                rgb::RGBA {
-                    r: 255,
-                    g: 0,
-                    b: 0,
-                    a: 255,
-                },
-            );
-        });
+                self.raycast.player_fov,
+            ))
+            .for_each(|(stored_distance, angle)| {
+                let computed_distance = self
+                    .raycast
+                    .distance_to_wall(angle + self.raycast.player_heading)
+                    .0;
+                *stored_distance = (self.height as f32 / computed_distance) as usize;
+            });
+
+        self.distances
+            .iter()
+            .enumerate()
+            .for_each(|(idx, col_height)| {
+                // log::debug!("{}, {}", idx, col_height);
+                let mut col_height = *col_height;
+                if col_height > self.height {
+                    col_height = self.height;
+                }
+                draw_centered_col(
+                    pixels.frame_mut(),
+                    self.width,
+                    self.height,
+                    idx,
+                    col_height,
+                    rgb::RGBA {
+                        r: 255,
+                        g: 0,
+                        b: 0,
+                        a: 255,
+                    },
+                );
+            });
     }
 
     fn render_radar(&mut self) {
