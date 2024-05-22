@@ -1,7 +1,10 @@
 use std::usize;
 
 use pixels::{Pixels, SurfaceTexture};
-use winit::window::{Window, WindowId};
+use winit::{
+    event::ElementState,
+    window::{Window, WindowId},
+};
 
 mod raycast;
 
@@ -104,6 +107,15 @@ impl winit::application::ApplicationHandler for App {
             let surface_texture = SurfaceTexture::new(self.width as u32, self.height as u32, &win);
             Pixels::new(self.width as u32, self.height as u32, surface_texture).unwrap()
         });
+        self.pixels
+            .as_mut()
+            .unwrap()
+            .clear_color(pixels::wgpu::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 255.0,
+                a: 255.0,
+            });
         self.window = Some(win);
     }
 
@@ -133,8 +145,7 @@ impl winit::application::ApplicationHandler for App {
                 device_id: _,
                 event,
                 is_synthetic: _,
-            } => {
-                use raycast::Heading::*;
+            } if event.repeat == false => {
                 use winit::keyboard::{Key, NamedKey};
                 if let Some(my_key) = match &event.logical_key {
                     Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
@@ -155,20 +166,6 @@ impl winit::application::ApplicationHandler for App {
                         self.pressed_keys.remove(&my_key);
                     }
                 };
-                for key in &self.pressed_keys {
-                    match key {
-                        MyKeys::Left => self.raycast.move_player(Left),
-                        MyKeys::KeyQ => self.raycast.move_player(Left),
-                        MyKeys::Right => self.raycast.move_player(Right),
-                        MyKeys::KeyD => self.raycast.move_player(Right),
-                        MyKeys::Up => self.raycast.move_player(Forward),
-                        MyKeys::KeyZ => self.raycast.move_player(Forward),
-                        MyKeys::Down => self.raycast.move_player(Backward),
-                        MyKeys::KeyS => self.raycast.move_player(Backward),
-                        MyKeys::KeyA => self.raycast.pan_left(),
-                        MyKeys::KeyE => self.raycast.pan_right(),
-                    }
-                }
                 if event.state == event::ElementState::Pressed {
                     match event.logical_key {
                         Key::Named(NamedKey::Escape) => event_loop.exit(),
@@ -182,112 +179,114 @@ impl winit::application::ApplicationHandler for App {
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }
-            WindowEvent::RedrawRequested => {
-                let now = std::time::Instant::now();
-
-                self.timings.push_back(now);
-                if now.duration_since(self.last_fps_report).as_secs() >= 1 {
-                    if let Some(avg) = timings_avg(self.timings.iter()) {
-                        // log::info!("{} fps", 1000 / avg);
-                    }
-                    self.last_fps_report = now;
-                }
-
-                if let Some(pixels) = &mut self.pixels {
-                    pixels.clear_color(pixels::wgpu::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 255.0,
-                        a: 255.0,
-                    });
-                    put_pixel1(
-                        pixels.frame_mut(),
-                        self.width,
-                        10,
-                        10,
-                        rgb::RGBA {
-                            r: 255,
-                            g: 0,
-                            b: 0,
-                            a: 255,
-                        },
-                    );
-                    put_pixel1(
-                        pixels.frame_mut(),
-                        self.width,
-                        self.width - 10,
-                        self.height - 10,
-                        rgb::RGBA {
-                            r: 255,
-                            g: 0,
-                            b: 0,
-                            a: 255,
-                        },
-                    );
-                    if self.pause {
-                        put_pixel1(
-                            pixels.frame_mut(),
-                            self.width,
-                            (self.raycast.player_pos.0 * 50.0) as usize,
-                            (self.raycast.player_pos.1 * 50.0) as usize,
-                            rgb::RGBA {
-                                r: 0,
-                                g: 255,
-                                b: 0,
-                                a: 255,
-                            },
-                        );
-                        self.raycast.pos_of_hits(5).for_each(|(x, y)| {
-                            put_pixel1(
-                                pixels.frame_mut(),
-                                self.width,
-                                (x * 50.0) as usize,
-                                (y * 50.0) as usize,
-                                rgb::RGBA {
-                                    r: 255,
-                                    g: 0,
-                                    b: 0,
-                                    a: 255,
-                                },
-                            );
-                        });
-                    } else {
-                        self.raycast
-                            .distance_to_walls(self.width)
-                            .map(|distance| (self.height as f32 / distance) as usize)
-                            .enumerate()
-                            .for_each(|(idx, mut col_height)| {
-                                // log::debug!("{}, {}", idx, col_height);
-                                if col_height > self.height {
-                                    col_height = self.height;
-                                }
-                                draw_centered_col(
-                                    pixels.frame_mut(),
-                                    self.width,
-                                    self.height,
-                                    idx,
-                                    col_height,
-                                    rgb::RGBA {
-                                        r: 255,
-                                        g: 0,
-                                        b: 0,
-                                        a: 255,
-                                    },
-                                );
-                            });
-                    }
-
-                    if let Err(err) = pixels.render() {
-                        log::error!("failed to render with error {}", err);
-                        return;
-                    }
-                }
-                if !self.pause {
-                    self.window.as_ref().unwrap().request_redraw();
-                }
-            }
+            WindowEvent::RedrawRequested => self.render(),
             _ => {}
         }
+    }
+}
+
+impl App {
+    fn log_fps(&mut self) {
+        let now = std::time::Instant::now();
+
+        self.timings.push_back(now);
+        if now.duration_since(self.last_fps_report).as_secs() >= 1 {
+            if let Some(avg) = timings_avg(self.timings.iter()) {
+                log::info!("{} fps", 1000 / avg);
+            }
+            self.last_fps_report = now;
+        }
+    }
+
+    fn render(&mut self) {
+        use raycast::Heading::*;
+        use MyKeys;
+        for key in &self.pressed_keys {
+            match key {
+                MyKeys::Left => self.raycast.move_player(Left),
+                MyKeys::KeyQ => self.raycast.move_player(Left),
+                MyKeys::Right => self.raycast.move_player(Right),
+                MyKeys::KeyD => self.raycast.move_player(Right),
+                MyKeys::Up => self.raycast.move_player(Forward),
+                MyKeys::KeyZ => self.raycast.move_player(Forward),
+                MyKeys::Down => self.raycast.move_player(Backward),
+                MyKeys::KeyS => self.raycast.move_player(Backward),
+                MyKeys::KeyA => self.raycast.pan_left(),
+                MyKeys::KeyE => self.raycast.pan_right(),
+            }
+        }
+        self.log_fps();
+        if self.pause {
+            self.render_radar();
+        } else {
+            self.render_fpv();
+        }
+
+        if let Err(err) = self.pixels.as_mut().unwrap().render() {
+            log::error!("failed to render with error {}", err);
+            return;
+        }
+        // if !self.pause {
+        // }
+        self.window.as_ref().unwrap().request_redraw();
+    }
+
+    fn render_fpv(&mut self) {
+        let pixels = &mut self.pixels.as_mut().unwrap();
+        self.raycast
+            .distance_to_walls(self.width)
+            .map(|distance| (self.height as f32 / distance) as usize)
+            .enumerate()
+            .for_each(|(idx, mut col_height)| {
+                // log::debug!("{}, {}", idx, col_height);
+                if col_height > self.height {
+                    col_height = self.height;
+                }
+                draw_centered_col(
+                    pixels.frame_mut(),
+                    self.width,
+                    self.height,
+                    idx,
+                    col_height,
+                    rgb::RGBA {
+                        r: 255,
+                        g: 0,
+                        b: 0,
+                        a: 255,
+                    },
+                );
+            });
+    }
+
+    fn render_radar(&mut self) {
+        let pixels = &mut self.pixels.as_mut().unwrap();
+
+        put_pixel1(
+            pixels.frame_mut(),
+            self.width,
+            (self.raycast.player_pos.0 * 50.0) as usize,
+            (self.raycast.player_pos.1 * 50.0) as usize,
+            rgb::RGBA {
+                r: 0,
+                g: 255,
+                b: 0,
+                a: 255,
+            },
+        );
+        self.raycast.pos_of_hits(5).for_each(|(x, y)| {
+            put_pixel1(
+                pixels.frame_mut(),
+                self.width,
+                (x * 50.0) as usize,
+                (y * 50.0) as usize,
+                rgb::RGBA {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                    a: 255,
+                },
+            );
+        });
     }
 }
 
