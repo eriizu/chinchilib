@@ -1,6 +1,7 @@
 use std::usize;
 
 use pixels::{Pixels, SurfaceTexture};
+use rayon::{iter::ParallelIterator, prelude::*};
 use winit::{
     event::ElementState,
     window::{Window, WindowId},
@@ -233,29 +234,31 @@ impl App {
 
     fn render_fpv(&mut self) {
         let pixels = &mut self.pixels.as_mut().unwrap();
-        self.raycast
+        let patate: Vec<usize> = self
+            .raycast
             .distance_to_walls(self.width)
             .map(|distance| (self.height as f32 / distance) as usize)
-            .enumerate()
-            .for_each(|(idx, mut col_height)| {
-                // log::debug!("{}, {}", idx, col_height);
-                if col_height > self.height {
-                    col_height = self.height;
-                }
-                draw_centered_col(
-                    pixels.frame_mut(),
-                    self.width,
-                    self.height,
-                    idx,
-                    col_height,
-                    rgb::RGBA {
-                        r: 255,
-                        g: 0,
-                        b: 0,
-                        a: 255,
-                    },
-                );
-            });
+            .collect();
+        patate.iter().enumerate().for_each(|(idx, col_height)| {
+            // log::debug!("{}, {}", idx, col_height);
+            let mut col_height = *col_height;
+            if col_height > self.height {
+                col_height = self.height;
+            }
+            draw_centered_col(
+                pixels.frame_mut(),
+                self.width,
+                self.height,
+                idx,
+                col_height,
+                rgb::RGBA {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                    a: 255,
+                },
+            );
+        });
     }
 
     fn render_radar(&mut self) {
@@ -273,12 +276,14 @@ impl App {
                 a: 255,
             },
         );
-        self.raycast.pos_of_hits(5).for_each(|(x, y)| {
+        let hits: Vec<(f32, f32)> = self.raycast.pos_of_hits(5).collect();
+        // for hit in self.raycast.pos_of_hits(5). {}
+        hits.iter().for_each(|(x, y)| {
             put_pixel1(
                 pixels.frame_mut(),
                 self.width,
-                (x * 50.0) as usize,
-                (y * 50.0) as usize,
+                (*x * 50.0) as usize,
+                (*y * 50.0) as usize,
                 rgb::RGBA {
                     r: 255,
                     g: 0,

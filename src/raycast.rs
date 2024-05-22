@@ -1,6 +1,7 @@
 use std::usize;
 
 use array2d::Array2D;
+use rayon::{iter::ParallelIterator, prelude::*};
 
 pub struct World {
     map: Array2D<u8>,
@@ -64,12 +65,18 @@ impl World {
         return (distance, coords);
     }
 
-    pub fn distance_to_walls<'a>(&'a self, ray_quantity: usize) -> impl Iterator<Item = f32> + 'a {
+    pub fn distance_to_walls<'a>(
+        &'a self,
+        ray_quantity: usize,
+    ) -> impl ParallelIterator<Item = f32> + 'a {
         generate_ray_angles(ray_quantity, self.player_fov)
             .map(|angle| self.distance_to_wall(angle + self.player_heading).0)
     }
 
-    pub fn pos_of_hits<'a>(&'a self, ray_quantity: usize) -> impl Iterator<Item = (f32, f32)> + 'a {
+    pub fn pos_of_hits<'a>(
+        &'a self,
+        ray_quantity: usize,
+    ) -> impl ParallelIterator<Item = (f32, f32)> + 'a {
         generate_ray_angles(ray_quantity, self.player_fov)
             .map(|angle| self.distance_to_wall(angle + self.player_heading).1)
     }
@@ -115,10 +122,11 @@ pub fn move_forward_floored(pos: (usize, usize), direction: f32, distance: f32) 
     (x as usize, y as usize)
 }
 
-fn generate_ray_angles(ray_quantity: usize, fov: f32) -> impl Iterator<Item = f32> {
+fn generate_ray_angles(ray_quantity: usize, fov: f32) -> impl ParallelIterator<Item = f32> {
     let lower_half = (fov / 2.0) * -1.0;
     let step = fov / (ray_quantity - 1) as f32;
     (0..ray_quantity)
+        .into_par_iter()
         .enumerate()
         .map(move |(idx, _)| (step * idx as f32) + lower_half)
 }
