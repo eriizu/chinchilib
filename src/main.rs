@@ -1,10 +1,7 @@
 use std::usize;
 
 use pixels::{Pixels, SurfaceTexture};
-use winit::{
-    keyboard::{self, SmolStr},
-    window::{Window, WindowId},
-};
+use winit::window::{Window, WindowId};
 
 mod raycast;
 
@@ -35,6 +32,8 @@ struct App {
     timings: circular_buffer::CircularBuffer<240, std::time::Instant>,
     last_fps_report: std::time::Instant,
     raycast: raycast::World,
+    height: usize,
+    width: usize,
 }
 
 impl Default for App {
@@ -46,12 +45,11 @@ impl Default for App {
             timings: circular_buffer::CircularBuffer::default(),
             last_fps_report: std::time::Instant::now(),
             raycast: raycast::World::default(),
+            height: 240,
+            width: 320,
         }
     }
 }
-
-const WIDTH: usize = 320;
-const HEIGHT: usize = 240;
 
 // INFO: source https://chatgpt.com/share/5cebcdd6-fe9d-4c5d-bf68-bc62a0b8c7df
 fn timings_avg<'a, T>(iter: T) -> Option<u128>
@@ -84,13 +82,12 @@ where
 impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let mut attr = Window::default_attributes();
-        // FIXME: don't need to use logical size: pixels doesn't support different DPIs
-        let size = winit::dpi::PhysicalSize::new(WIDTH as u16, HEIGHT as u16);
+        let size = winit::dpi::PhysicalSize::new(self.width as u16, self.height as u16);
         attr = attr.with_inner_size(size).with_title("Raycaster");
         let win = event_loop.create_window(attr).unwrap();
         self.pixels = Some({
-            let surface_texture = SurfaceTexture::new(WIDTH as u32, HEIGHT as u32, &win);
-            Pixels::new(WIDTH as u32, HEIGHT as u32, surface_texture).unwrap()
+            let surface_texture = SurfaceTexture::new(self.width as u32, self.height as u32, &win);
+            Pixels::new(self.width as u32, self.height as u32, surface_texture).unwrap()
         });
         self.window = Some(win);
     }
@@ -110,22 +107,29 @@ impl winit::application::ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => {
-                let size: winit::dpi::LogicalSize<f64> = winit::dpi::LogicalSize::from_physical(
-                    size,
-                    self.window.as_ref().unwrap().scale_factor(),
-                );
+                self.width = size.width as usize;
+                self.height = size.height as usize;
+                if let Some(pixels) = &mut self.pixels {
+                    pixels.resize_surface(size.width, size.height).unwrap();
+                    pixels.resize_buffer(size.width, size.height).unwrap();
+                }
             }
             WindowEvent::KeyboardInput {
                 device_id: _,
                 event,
                 is_synthetic: _,
             } if event.state == event::ElementState::Pressed => {
+                use raycast::Heading::*;
                 use winit::keyboard::{Key, NamedKey};
                 match event.logical_key {
-                    Key::Named(NamedKey::ArrowLeft) => self.raycast.move_left(),
-                    Key::Named(NamedKey::ArrowRight) => self.raycast.move_right(),
-                    Key::Named(NamedKey::ArrowUp) => self.raycast.move_forward(),
-                    Key::Named(NamedKey::ArrowDown) => self.raycast.move_backwards(),
+                    Key::Named(NamedKey::ArrowLeft) => self.raycast.move_player(Left),
+                    Key::Character(name) if name == "q" => self.raycast.move_player(Left),
+                    Key::Named(NamedKey::ArrowRight) => self.raycast.move_player(Right),
+                    Key::Character(name) if name == "d" => self.raycast.move_player(Right),
+                    Key::Named(NamedKey::ArrowUp) => self.raycast.move_player(Forward),
+                    Key::Character(name) if name == "z" => self.raycast.move_player(Forward),
+                    Key::Named(NamedKey::ArrowDown) => self.raycast.move_player(Backward),
+                    Key::Character(name) if name == "s" => self.raycast.move_player(Backward),
                     Key::Character(a) if a == "a" => self.raycast.pan_left(),
                     Key::Character(a) if a == "e" => self.raycast.pan_right(),
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
@@ -134,7 +138,7 @@ impl winit::application::ApplicationHandler for App {
                         self.timings.clear();
                         self.last_fps_report = std::time::Instant::now();
                     }
-                    _ => log::debug!("kb event {:?}", event),
+                    _ => log::debug!("unused kb event {:?}", event),
                 }
                 self.window.as_ref().unwrap().request_redraw();
             }
@@ -158,7 +162,7 @@ impl winit::application::ApplicationHandler for App {
                     });
                     put_pixel1(
                         pixels.frame_mut(),
-                        WIDTH,
+                        self.width,
                         10,
                         10,
                         rgb::RGBA {
@@ -170,9 +174,9 @@ impl winit::application::ApplicationHandler for App {
                     );
                     put_pixel1(
                         pixels.frame_mut(),
-                        WIDTH,
-                        WIDTH - 10,
-                        HEIGHT - 10,
+                        self.width,
+                        self.width - 10,
+                        self.height - 10,
                         rgb::RGBA {
                             r: 255,
                             g: 0,
@@ -181,18 +185,18 @@ impl winit::application::ApplicationHandler for App {
                         },
                     );
                     self.raycast
-                        .distance_to_walls(WIDTH)
-                        .map(|distance| (HEIGHT as f32 / distance) as usize)
+                        .distance_to_walls(self.width)
+                        .map(|distance| (self.height as f32 / distance) as usize)
                         .enumerate()
                         .for_each(|(idx, mut col_height)| {
                             // log::debug!("{}, {}", idx, col_height);
-                            if col_height > HEIGHT {
-                                col_height = HEIGHT;
+                            if col_height > self.height {
+                                col_height = self.height;
                             }
                             draw_centered_col(
                                 pixels.frame_mut(),
-                                WIDTH,
-                                HEIGHT,
+                                self.width,
+                                self.height,
                                 idx,
                                 col_height,
                                 rgb::RGBA {

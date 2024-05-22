@@ -39,6 +39,13 @@ impl Default for World {
     }
 }
 
+pub enum Heading {
+    Forward,
+    Backward,
+    Right,
+    Left,
+}
+
 impl World {
     fn is_wall(&self, coords: (f32, f32)) -> bool {
         let coords = (coords.0 as usize, coords.1 as usize);
@@ -51,7 +58,7 @@ impl World {
         let mut distance: f32 = 0.0;
         let mut coords = move_forward(self.player_pos, heading, distance);
         while !self.is_wall(coords) {
-            distance += 0.1;
+            distance += 0.01;
             coords = move_forward(self.player_pos, heading, distance);
         }
         return distance;
@@ -63,42 +70,26 @@ impl World {
     }
 
     pub fn pan_left(&mut self) {
-        self.player_heading += std::f32::consts::FRAC_PI_8;
-        log::debug!("heading {}", rads_to_deg(self.player_heading));
-    }
-    pub fn pan_right(&mut self) {
         self.player_heading -= std::f32::consts::FRAC_PI_8;
         log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
-
-    pub fn move_forward(&mut self) {
-        self.player_pos = move_forward(self.player_pos, self.player_heading, 0.2);
-        log::debug!("pos {:?}", self.player_pos);
+    pub fn pan_right(&mut self) {
+        self.player_heading += std::f32::consts::FRAC_PI_8;
+        log::debug!("heading {}", rads_to_deg(self.player_heading));
     }
 
-    pub fn move_backwards(&mut self) {
-        self.player_pos = move_forward(
-            self.player_pos,
-            std::f32::consts::PI + self.player_heading,
-            0.2,
-        );
-        log::debug!("pos {:?}", self.player_pos);
-    }
-    pub fn move_left(&mut self) {
-        self.player_pos = move_forward(
-            self.player_pos,
-            std::f32::consts::FRAC_PI_2 + self.player_heading,
-            0.2,
-        );
-        log::debug!("pos {:?}", self.player_pos);
-    }
-    pub fn move_right(&mut self) {
-        self.player_pos = move_forward(
-            self.player_pos,
-            self.player_heading - std::f32::consts::FRAC_PI_2,
-            0.2,
-        );
-        log::debug!("pos {:?}", self.player_pos);
+    pub fn move_player(&mut self, heading: Heading) {
+        let patate = self.player_heading
+            + match heading {
+                Heading::Forward => 0.0,
+                Heading::Backward => std::f32::consts::PI,
+                Heading::Left => 0.0 - std::f32::consts::FRAC_PI_2,
+                Heading::Right => std::f32::consts::FRAC_PI_2,
+            };
+        let new_pos = move_forward(self.player_pos, patate, 0.2);
+        if !self.is_wall(new_pos) {
+            self.player_pos = new_pos;
+        }
     }
 }
 
