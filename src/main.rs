@@ -46,13 +46,10 @@ struct App {
     window: Option<Window>,
     pixels: Option<Pixels>,
     pause: bool,
-    timings: circular_buffer::CircularBuffer<240, std::time::Instant>,
-    last_fps_report: std::time::Instant,
-    raycast: raycast::World,
     height: usize,
     width: usize,
     pressed_keys: std::collections::HashSet<MyKeys>,
-    distances: Vec<usize>,
+    my_pos: (usize, usize),
 }
 
 impl Default for App {
@@ -61,47 +58,17 @@ impl Default for App {
             window: None,
             pixels: None,
             pause: false,
-            timings: circular_buffer::CircularBuffer::default(),
-            last_fps_report: std::time::Instant::now(),
-            raycast: raycast::World::default(),
             height: 240,
             width: 320,
             pressed_keys: std::collections::HashSet::new(),
-            distances: Vec::with_capacity(320),
+            my_pos: (200, 100),
         }
-    }
-}
-
-// INFO: source https://chatgpt.com/share/5cebcdd6-fe9d-4c5d-bf68-bc62a0b8c7df
-fn timings_avg<'a, T>(iter: T) -> Option<u128>
-where
-    T: Iterator<Item = &'a std::time::Instant>,
-{
-    let mut iter = iter.peekable();
-    let mut prev = match iter.next() {
-        Some(val) => val,
-        None => return None, // If the iterator is empty, return None
-    };
-
-    let mut count = 0;
-    let mut total_diff = 0;
-
-    while let Some(next) = iter.peek() {
-        total_diff += next.duration_since(*prev).as_millis();
-        count += 1;
-        prev = next;
-        iter.next(); // Consume the element
-    }
-
-    if count == 0 {
-        None // If there was only one element, return None
-    } else {
-        Some(total_diff / count)
     }
 }
 
 impl winit::application::ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        log::info!("resumed called");
         let mut attr = Window::default_attributes();
         let size = winit::dpi::PhysicalSize::new(self.width as u16, self.height as u16);
         attr = attr.with_inner_size(size).with_title("Raycaster");
@@ -125,6 +92,7 @@ impl winit::application::ApplicationHandler for App {
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.pressed_keys.len() != 0 {
+            log::info!("not waiting");
             self.window.as_ref().unwrap().request_redraw();
         }
     }
@@ -139,7 +107,6 @@ impl winit::application::ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => {
                 log::info!("The close button was pressed; stopping");
-                log::info!("{}", timings_avg(self.timings.iter()).unwrap());
                 event_loop.exit();
             }
             WindowEvent::Resized(size) => self.process_resize(size),
@@ -155,124 +122,50 @@ impl winit::application::ApplicationHandler for App {
 }
 
 impl App {
-    fn log_fps(&mut self) {
-        let now = std::time::Instant::now();
-
-        self.timings.push_back(now);
-        if now.duration_since(self.last_fps_report).as_secs() >= 1 {
-            if let Some(avg) = timings_avg(self.timings.iter()) {
-                log::info!("{} fps", 1000 / avg);
-            }
-            self.last_fps_report = now;
-        }
-    }
-
     fn process_redraw(&mut self) {
-        use raycast::Heading::*;
+        log::info!("redrawing");
         use MyKeys;
         for key in &self.pressed_keys {
             match key {
-                MyKeys::Left => self.raycast.move_player(Left),
-                MyKeys::KeyQ => self.raycast.move_player(Left),
-                MyKeys::Right => self.raycast.move_player(Right),
-                MyKeys::KeyD => self.raycast.move_player(Right),
-                MyKeys::Up => self.raycast.move_player(Forward),
-                MyKeys::KeyZ => self.raycast.move_player(Forward),
-                MyKeys::Down => self.raycast.move_player(Backward),
-                MyKeys::KeyS => self.raycast.move_player(Backward),
-                MyKeys::KeyA => self.raycast.pan_left(),
-                MyKeys::KeyE => self.raycast.pan_right(),
+                MyKeys::Left => {
+                    self.my_pos.0 -= 1;
+                }
+                MyKeys::KeyQ => {}
+                MyKeys::Right => {
+                    self.my_pos.0 += 1;
+                }
+                MyKeys::KeyD => {}
+                MyKeys::Up => {
+                    self.my_pos.1 -= 1;
+                }
+                MyKeys::KeyZ => {}
+                MyKeys::Down => {
+                    self.my_pos.1 += 1;
+                }
+                MyKeys::KeyS => {}
+                MyKeys::KeyA => {}
+                MyKeys::KeyE => {}
             }
         }
-        self.log_fps();
-        if self.pause {
-            self.render_radar();
-        } else {
-            self.render_fpv();
-        }
+
+        let pixels = &mut self.pixels.as_mut().unwrap();
+        put_pixel1(
+            pixels.frame_mut(),
+            self.width,
+            self.my_pos.0,
+            self.my_pos.1,
+            rgb::RGBA {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 255,
+            },
+        );
 
         if let Err(err) = self.pixels.as_mut().unwrap().render() {
             log::error!("failed to render with error {}", err);
             return;
         }
-        // if !self.pause {
-        // }
-        // self.window.as_ref().unwrap().request_redraw();
-    }
-
-    fn render_fpv(&mut self) {
-        let pixels = &mut self.pixels.as_mut().unwrap();
-
-        self.distances
-            .par_iter_mut()
-            .zip(raycast::generate_ray_angles(
-                self.width,
-                self.raycast.player_fov,
-            ))
-            .for_each(|(stored_distance, angle)| {
-                let computed_distance = self
-                    .raycast
-                    .distance_to_wall(angle + self.raycast.player_heading)
-                    .0;
-                *stored_distance = (self.height as f32 / computed_distance) as usize;
-            });
-
-        self.distances
-            .iter()
-            .enumerate()
-            .for_each(|(idx, col_height)| {
-                // log::debug!("{}, {}", idx, col_height);
-                let mut col_height = *col_height;
-                if col_height > self.height {
-                    col_height = self.height;
-                }
-                draw_centered_col(
-                    pixels.frame_mut(),
-                    self.width,
-                    self.height,
-                    idx,
-                    col_height,
-                    rgb::RGBA {
-                        r: 255,
-                        g: 0,
-                        b: 0,
-                        a: 255,
-                    },
-                );
-            });
-    }
-
-    fn render_radar(&mut self) {
-        let pixels = &mut self.pixels.as_mut().unwrap();
-
-        put_pixel1(
-            pixels.frame_mut(),
-            self.width,
-            (self.raycast.player_pos.0 * 50.0) as usize,
-            (self.raycast.player_pos.1 * 50.0) as usize,
-            rgb::RGBA {
-                r: 0,
-                g: 255,
-                b: 0,
-                a: 255,
-            },
-        );
-        let hits: Vec<(f32, f32)> = self.raycast.pos_of_hits(5).collect();
-        // for hit in self.raycast.pos_of_hits(5). {}
-        hits.iter().for_each(|(x, y)| {
-            put_pixel1(
-                pixels.frame_mut(),
-                self.width,
-                (*x * 50.0) as usize,
-                (*y * 50.0) as usize,
-                rgb::RGBA {
-                    r: 255,
-                    g: 0,
-                    b: 0,
-                    a: 255,
-                },
-            );
-        });
     }
 
     fn process_kbd_input(
@@ -308,8 +201,6 @@ impl App {
                 Key::Named(NamedKey::Escape) => event_loop.exit(),
                 Key::Named(NamedKey::Space) => {
                     self.pause = !self.pause;
-                    self.timings.clear();
-                    self.last_fps_report = std::time::Instant::now();
                 }
                 _ => {}
             }
@@ -323,7 +214,6 @@ impl App {
             pixels.resize_surface(size.width, size.height).unwrap();
             pixels.resize_buffer(size.width, size.height).unwrap();
         }
-        self.distances.resize(self.width, 0);
         self.window.as_ref().unwrap().request_redraw();
     }
 }
