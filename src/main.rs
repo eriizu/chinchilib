@@ -24,7 +24,7 @@ fn main() {
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
-    let mut app = App::default();
+    let mut app = WinitHandler::default();
     event_loop.run_app(&mut app).unwrap();
 }
 
@@ -42,58 +42,38 @@ enum MyKeys {
     Right,
 }
 
-struct App {
-    window: Option<Window>,
-    pixels: Option<Pixels>,
-    pause: bool,
+/// Everyting about the window. Pixels and Window are options because they
+/// are constructed on "resume" and cannot be construted earlier
+struct WinitHandler {
+    app: Option<App>,
     height: usize,
     width: usize,
-    pressed_keys: std::collections::HashSet<MyKeys>,
-    my_pos: (usize, usize),
 }
 
-impl Default for App {
+impl Default for WinitHandler {
     fn default() -> Self {
         Self {
-            window: None,
-            pixels: None,
-            pause: false,
+            app: None,
             height: 240,
             width: 320,
-            pressed_keys: std::collections::HashSet::new(),
-            my_pos: (200, 100),
         }
     }
 }
 
-impl winit::application::ApplicationHandler for App {
+impl winit::application::ApplicationHandler for WinitHandler {
+    /// Resume gets called when window gets loaded for the first time
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         log::info!("resumed called");
-        let mut attr = Window::default_attributes();
-        let size = winit::dpi::PhysicalSize::new(self.width as u16, self.height as u16);
-        attr = attr.with_inner_size(size).with_title("Raycaster");
-        let win = event_loop.create_window(attr).unwrap();
-        self.pixels = Some({
-            let surface_texture = SurfaceTexture::new(self.width as u32, self.height as u32, &win);
-            Pixels::new(self.width as u32, self.height as u32, surface_texture).unwrap()
-        });
-        self.pixels
-            .as_mut()
-            .unwrap()
-            .clear_color(pixels::wgpu::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 255.0,
-                a: 255.0,
-            });
-        self.window = Some(win);
-        self.window.as_ref().unwrap().request_redraw();
+        self.app = Some(App::new(event_loop, self.width, self.height));
     }
 
+    /// Instead of redrawing for every event, or every keyprss, we only try to
+    /// render after all evens have been processed.
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        if self.pressed_keys.len() != 0 {
-            log::info!("not waiting");
-            self.window.as_ref().unwrap().request_redraw();
+        let app = self.app.as_ref().unwrap();
+        if app.pressed_keys.len() != 0 {
+            log::info!("not waiting there are keys currently pressed");
+            app.window.request_redraw();
         }
     }
 
@@ -103,26 +83,70 @@ impl winit::application::ApplicationHandler for App {
         _: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        let app = self.app.as_mut().unwrap();
         use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
                 log::info!("The close button was pressed; stopping");
                 event_loop.exit();
             }
-            WindowEvent::Resized(size) => self.process_resize(size),
+            WindowEvent::Resized(size) => app.process_resize(size),
             WindowEvent::KeyboardInput {
                 device_id: _,
                 event,
                 is_synthetic: _,
-            } if event.repeat == false => self.process_kbd_input(event, event_loop),
-            WindowEvent::RedrawRequested => self.process_redraw(),
+            } if event.repeat == false => app.process_kbd_input(event, event_loop),
+            WindowEvent::RedrawRequested => app.on_redraw(),
             _ => {}
         }
     }
 }
 
+pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
+    use rgb::*;
+    let idx = width * y + x;
+    frame.as_rgba_mut()[idx] = color;
+}
+
+struct App {
+    window: Window,
+    pixels: Pixels,
+    pause: bool,
+    height: usize,
+    width: usize,
+    pressed_keys: std::collections::HashSet<MyKeys>,
+    my_pos: (usize, usize),
+}
+
 impl App {
-    fn process_redraw(&mut self) {
+    fn new(event_loop: &winit::event_loop::ActiveEventLoop, width: usize, height: usize) -> Self {
+        let mut attr = Window::default_attributes();
+        let size = winit::dpi::PhysicalSize::new(width as u16, height as u16);
+        attr = attr.with_inner_size(size).with_title("Raycaster");
+        let win = event_loop.create_window(attr).unwrap();
+
+        let mut pixels = {
+            let surface_texture = SurfaceTexture::new(width as u32, height as u32, &win);
+            Pixels::new(width as u32, height as u32, surface_texture).unwrap()
+        };
+        pixels.clear_color(pixels::wgpu::Color {
+            r: 0.0,
+            g: 0.0,
+            b: 255.0,
+            a: 255.0,
+        });
+        Self {
+            window: win,
+            pixels,
+            height,
+            width,
+            pause: false,
+            pressed_keys: std::collections::HashSet::new(),
+            my_pos: (width / 2, height / 2),
+        }
+    }
+
+    fn on_redraw(&mut self) {
         log::info!("redrawing");
         use MyKeys;
         for key in &self.pressed_keys {
@@ -148,9 +172,8 @@ impl App {
             }
         }
 
-        let pixels = &mut self.pixels.as_mut().unwrap();
         put_pixel1(
-            pixels.frame_mut(),
+            self.pixels.frame_mut(),
             self.width,
             self.my_pos.0,
             self.my_pos.1,
@@ -162,7 +185,7 @@ impl App {
             },
         );
 
-        if let Err(err) = self.pixels.as_mut().unwrap().render() {
+        if let Err(err) = self.pixels.render() {
             log::error!("failed to render with error {}", err);
             return;
         }
@@ -210,58 +233,8 @@ impl App {
     fn process_resize(&mut self, size: winit::dpi::PhysicalSize<u32>) {
         self.width = size.width as usize;
         self.height = size.height as usize;
-        if let Some(pixels) = &mut self.pixels {
-            pixels.resize_surface(size.width, size.height).unwrap();
-            pixels.resize_buffer(size.width, size.height).unwrap();
-        }
-        self.window.as_ref().unwrap().request_redraw();
+        self.pixels.resize_surface(size.width, size.height).unwrap();
+        self.pixels.resize_buffer(size.width, size.height).unwrap();
+        self.window.request_redraw();
     }
-}
-
-pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
-    use rgb::*;
-    let idx = width * y + x;
-    frame.as_rgba_mut()[idx] = color;
-}
-
-pub fn draw_centered_col(
-    frame: &mut [u8],
-    width: usize,
-    height: usize,
-    x: usize,
-    col_height: usize,
-    color: rgb::RGBA8,
-) {
-    let mid = height / 2;
-    let up_bound = mid - (col_height / 2);
-    let low_bound = mid + (col_height / 2);
-    (0..up_bound).for_each(|y| {
-        put_pixel1(
-            frame,
-            width,
-            x,
-            y,
-            rgb::RGBA {
-                r: 0,
-                g: 0,
-                b: 255,
-                a: 255,
-            },
-        )
-    });
-    (up_bound..low_bound).for_each(|y| put_pixel1(frame, width, x, y, color));
-    (low_bound..height).for_each(|y| {
-        put_pixel1(
-            frame,
-            width,
-            x,
-            y,
-            rgb::RGBA {
-                r: 0,
-                g: 0,
-                b: 255,
-                a: 255,
-            },
-        )
-    });
 }
