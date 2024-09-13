@@ -1,11 +1,7 @@
 use std::usize;
 
 use pixels::{Pixels, SurfaceTexture};
-use rayon::{iter::ParallelIterator, prelude::*};
-use winit::{
-    event::ElementState,
-    window::{Window, WindowId},
-};
+use winit::window::{Window, WindowId};
 
 mod raycast;
 
@@ -17,7 +13,7 @@ fn main() {
 
     // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
     // dispatched any events. This is ideal for games and similar applications.
-    // event_loop.set_control_flow(ControlFlow::Poll);
+    // event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
 
     // ControlFlow::Wait pauses the event loop if no events are available to process.
     // This is ideal for non-game applications that only update in response to user
@@ -42,12 +38,35 @@ enum MyKeys {
     Right,
 }
 
+impl std::convert::TryFrom<&winit::keyboard::Key> for MyKeys {
+    type Error = ();
+    fn try_from(value: &winit::keyboard::Key) -> Result<Self, ()> {
+        use winit::keyboard::{Key, NamedKey};
+        match value {
+            Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
+            Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
+            Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
+            Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
+            Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
+            Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
+            Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
+            Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
+            Key::Character(name) if name == "a" => Some(MyKeys::KeyA),
+            Key::Character(name) if name == "e" => Some(MyKeys::KeyE),
+            _ => None,
+        }
+        .ok_or(())
+    }
+}
+
 /// Everyting about the window. Pixels and Window are options because they
 /// are constructed on "resume" and cannot be construted earlier
 struct WinitHandler {
     app: Option<App>,
     height: usize,
     width: usize,
+    last_frame: std::time::Instant,
+    tick: std::time::Duration,
 }
 
 impl Default for WinitHandler {
@@ -56,6 +75,8 @@ impl Default for WinitHandler {
             app: None,
             height: 240,
             width: 320,
+            last_frame: std::time::Instant::now(),
+            tick: std::time::Duration::from_millis(100),
         }
     }
 }
@@ -70,10 +91,13 @@ impl winit::application::ApplicationHandler for WinitHandler {
     /// Instead of redrawing for every event, or every keyprss, we only try to
     /// render after all evens have been processed.
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        let app = self.app.as_ref().unwrap();
+        let app = self.app.as_mut().unwrap();
         if app.pressed_keys.len() != 0 {
-            log::info!("not waiting there are keys currently pressed");
+            log::debug!("not waiting there are keys currently pressed");
+            app.on_tick();
             app.window.request_redraw();
+        } else {
+            // log::debug!("waiting nothing to do");
         }
     }
 
@@ -83,6 +107,7 @@ impl winit::application::ApplicationHandler for WinitHandler {
         _: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        log::debug!("got event {:?}", event);
         let app = self.app.as_mut().unwrap();
         use winit::event::WindowEvent;
         match event {
@@ -115,14 +140,14 @@ struct App {
     height: usize,
     width: usize,
     pressed_keys: std::collections::HashSet<MyKeys>,
-    my_pos: (usize, usize),
+    moving_pixel: MovingPixel,
 }
 
 impl App {
     fn new(event_loop: &winit::event_loop::ActiveEventLoop, width: usize, height: usize) -> Self {
         let mut attr = Window::default_attributes();
         let size = winit::dpi::PhysicalSize::new(width as u16, height as u16);
-        attr = attr.with_inner_size(size).with_title("Raycaster");
+        attr = attr.with_inner_size(size).with_title("Box");
         let win = event_loop.create_window(attr).unwrap();
 
         let mut pixels = {
@@ -142,53 +167,23 @@ impl App {
             width,
             pause: false,
             pressed_keys: std::collections::HashSet::new(),
-            my_pos: (width / 2, height / 2),
+            moving_pixel: MovingPixel::new(width / 2, height / 2),
         }
     }
 
     fn on_redraw(&mut self) {
-        log::info!("redrawing");
-        use MyKeys;
-        for key in &self.pressed_keys {
-            match key {
-                MyKeys::Left => {
-                    self.my_pos.0 -= 1;
-                }
-                MyKeys::KeyQ => {}
-                MyKeys::Right => {
-                    self.my_pos.0 += 1;
-                }
-                MyKeys::KeyD => {}
-                MyKeys::Up => {
-                    self.my_pos.1 -= 1;
-                }
-                MyKeys::KeyZ => {}
-                MyKeys::Down => {
-                    self.my_pos.1 += 1;
-                }
-                MyKeys::KeyS => {}
-                MyKeys::KeyA => {}
-                MyKeys::KeyE => {}
-            }
-        }
+        log::debug!("redrawing");
 
-        put_pixel1(
-            self.pixels.frame_mut(),
-            self.width,
-            self.my_pos.0,
-            self.my_pos.1,
-            rgb::RGBA {
-                r: 255,
-                g: 0,
-                b: 0,
-                a: 255,
-            },
-        );
+        self.moving_pixel.draw(&mut self.pixels, self.width);
 
         if let Err(err) = self.pixels.render() {
             log::error!("failed to render with error {}", err);
             return;
         }
+    }
+
+    fn on_tick(&mut self) {
+        self.moving_pixel.on_tick(&self.pressed_keys);
     }
 
     fn process_kbd_input(
@@ -197,28 +192,13 @@ impl App {
         event_loop: &winit::event_loop::ActiveEventLoop,
     ) {
         use winit::keyboard::{Key, NamedKey};
-        if let Some(my_key) = match &event.logical_key {
-            Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
-            Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
-            Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
-            Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
-            Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
-            Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
-            Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
-            Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
-            Key::Character(a) if a == "a" => Some(MyKeys::KeyA),
-            Key::Character(a) if a == "e" => Some(MyKeys::KeyE),
-            _ => None,
-        } {
+        if let Ok(my_key) = (&event.logical_key).try_into() {
             if event.state == winit::event::ElementState::Pressed {
                 self.pressed_keys.insert(my_key);
             } else if event.state == winit::event::ElementState::Released {
                 self.pressed_keys.remove(&my_key);
             }
         };
-        // if self.pressed_keys.len() != 0 {
-        //     self.window.as_ref().unwrap().request_redraw();
-        // }
         if event.state == winit::event::ElementState::Pressed {
             match event.logical_key {
                 Key::Named(NamedKey::Escape) => event_loop.exit(),
@@ -236,5 +216,62 @@ impl App {
         self.pixels.resize_surface(size.width, size.height).unwrap();
         self.pixels.resize_buffer(size.width, size.height).unwrap();
         self.window.request_redraw();
+    }
+}
+
+struct MovingPixel {
+    pos: (usize, usize),
+}
+
+impl Default for MovingPixel {
+    fn default() -> Self {
+        Self { pos: (0, 0) }
+    }
+}
+
+impl MovingPixel {
+    fn new(x: usize, y: usize) -> Self {
+        Self { pos: (x, y) }
+    }
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) {
+        for key in pressed_keys {
+            match key {
+                MyKeys::Left => {
+                    self.pos.0 -= 1;
+                }
+                MyKeys::KeyQ => {}
+                MyKeys::Right => {
+                    self.pos.0 += 1;
+                }
+                MyKeys::KeyD => {}
+                MyKeys::Up => {
+                    self.pos.1 -= 1;
+                }
+                MyKeys::KeyZ => {}
+                MyKeys::Down => {
+                    self.pos.1 += 1;
+                }
+                MyKeys::KeyS => {}
+                MyKeys::KeyA => {}
+                MyKeys::KeyE => {}
+            }
+        }
+    }
+
+    fn draw(&self, pixels: &mut Pixels, width: usize) {
+        if self.pos.0 * self.pos.1 < pixels.frame().len() {
+            put_pixel1(
+                pixels.frame_mut(),
+                width,
+                self.pos.0,
+                self.pos.1,
+                rgb::RGBA {
+                    r: 255,
+                    g: 0,
+                    b: 0,
+                    a: 255,
+                },
+            );
+        }
     }
 }
