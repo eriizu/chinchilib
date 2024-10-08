@@ -18,7 +18,7 @@ fn main() {
     // ControlFlow::Wait pauses the event loop if no events are available to process.
     // This is ideal for non-game applications that only update in response to user
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
 
     let mut app = WinitHandler::default();
     event_loop.run_app(&mut app).unwrap();
@@ -76,7 +76,7 @@ impl Default for WinitHandler {
             height: 240,
             width: 320,
             last_frame: std::time::Instant::now(),
-            tick: std::time::Duration::from_millis(100),
+            tick: std::time::Duration::from_nanos(16666666),
         }
     }
 }
@@ -91,13 +91,31 @@ impl winit::application::ApplicationHandler for WinitHandler {
     /// Instead of redrawing for every event, or every keyprss, we only try to
     /// render after all evens have been processed.
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        let app = self.app.as_mut().unwrap();
+        let app = self
+            .app
+            .as_mut()
+            .expect("about_to_wait not to be called if window doesn't exist.");
+
         if app.pressed_keys.len() != 0 {
+            // BUG: (probably) this will cause app not to tick if a key is pressed? I think??
+            // pressed keys should only be processed once on tick
             log::debug!("not waiting there are keys currently pressed");
-            app.on_tick();
-            app.window.request_redraw();
+            // app.on_tick();
+            // app.window.request_redraw();
         } else {
             // log::debug!("waiting nothing to do");
+        }
+        let now = std::time::Instant::now();
+        let duration_from = now.duration_since(self.last_frame);
+        if duration_from >= self.tick {
+            self.last_frame = now;
+            app.on_tick();
+            log::debug!("requesting redraw from about to wait");
+            app.window.request_redraw();
+        } else {
+            log::debug!("waiting nothing to do");
+            let duration_to = self.tick - duration_from;
+            std::thread::sleep(duration_to);
         }
     }
 
@@ -108,7 +126,10 @@ impl winit::application::ApplicationHandler for WinitHandler {
         event: winit::event::WindowEvent,
     ) {
         log::debug!("got event {:?}", event);
-        let app = self.app.as_mut().unwrap();
+        let app = self
+            .app
+            .as_mut()
+            .expect("window_event not to be called if window doesn't exist.");
         use winit::event::WindowEvent;
         match event {
             WindowEvent::CloseRequested => {
@@ -140,6 +161,7 @@ struct App {
     height: usize,
     width: usize,
     pressed_keys: std::collections::HashSet<MyKeys>,
+    released_keys: std::collections::HashSet<MyKeys>,
     moving_pixel: MovingPixel,
 }
 
@@ -167,6 +189,7 @@ impl App {
             width,
             pause: false,
             pressed_keys: std::collections::HashSet::new(),
+            released_keys: std::collections::HashSet::new(),
             moving_pixel: MovingPixel::new(width / 2, height / 2),
         }
     }
@@ -184,6 +207,9 @@ impl App {
 
     fn on_tick(&mut self) {
         self.moving_pixel.on_tick(&self.pressed_keys);
+        self.pressed_keys
+            .retain(|candidate| !self.released_keys.contains(candidate));
+        self.released_keys.clear();
     }
 
     fn process_kbd_input(
@@ -196,7 +222,11 @@ impl App {
             if event.state == winit::event::ElementState::Pressed {
                 self.pressed_keys.insert(my_key);
             } else if event.state == winit::event::ElementState::Released {
-                self.pressed_keys.remove(&my_key);
+                // INFO: released keys are not immediatly removed from pressed keys
+                // as there are yet to be processed by the tick.
+                // They will be removed after the tick.
+                self.released_keys.insert(my_key);
+                // self.pressed_keys.remove(&my_key);
             }
         };
         if event.state == winit::event::ElementState::Pressed {
