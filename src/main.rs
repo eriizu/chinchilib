@@ -97,13 +97,8 @@ impl winit::application::ApplicationHandler for WinitHandler {
             .expect("about_to_wait not to be called if window doesn't exist.");
 
         if app.pressed_keys.len() != 0 {
-            // BUG: (probably) this will cause app not to tick if a key is pressed? I think??
-            // pressed keys should only be processed once on tick
-            log::debug!("not waiting there are keys currently pressed");
-            // app.on_tick();
-            // app.window.request_redraw();
-        } else {
-            // log::debug!("waiting nothing to do");
+            // INFO: there is actually noting to do on key still pressed
+            // due to new key management logic
         }
         let now = std::time::Instant::now();
         let duration_from = now.duration_since(self.last_frame);
@@ -163,6 +158,7 @@ struct App {
     pressed_keys: std::collections::HashSet<MyKeys>,
     released_keys: std::collections::HashSet<MyKeys>,
     moving_pixel: MovingPixel,
+    needs_render: bool,
 }
 
 impl App {
@@ -191,22 +187,26 @@ impl App {
             pressed_keys: std::collections::HashSet::new(),
             released_keys: std::collections::HashSet::new(),
             moving_pixel: MovingPixel::new(width / 2, height / 2),
+            needs_render: true,
         }
     }
 
     fn on_redraw(&mut self) {
         log::debug!("redrawing");
 
-        self.moving_pixel.draw(&mut self.pixels, self.width);
+        if self.needs_render {
+            self.moving_pixel.draw(&mut self.pixels, self.width);
 
-        if let Err(err) = self.pixels.render() {
-            log::error!("failed to render with error {}", err);
-            return;
+            if let Err(err) = self.pixels.render() {
+                log::error!("failed to render with error {}", err);
+                return;
+            }
         }
+        self.needs_render = false;
     }
 
     fn on_tick(&mut self) {
-        self.moving_pixel.on_tick(&self.pressed_keys);
+        self.needs_render = self.moving_pixel.on_tick(&self.pressed_keys);
         self.pressed_keys
             .retain(|candidate| !self.released_keys.contains(candidate));
         self.released_keys.clear();
@@ -246,6 +246,7 @@ impl App {
         self.pixels.resize_surface(size.width, size.height).unwrap();
         self.pixels.resize_buffer(size.width, size.height).unwrap();
         self.window.request_redraw();
+        self.needs_render = true;
     }
 }
 
@@ -263,29 +264,36 @@ impl MovingPixel {
     fn new(x: usize, y: usize) -> Self {
         Self { pos: (x, y) }
     }
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) {
+
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool {
+        let mut ret = false;
         for key in pressed_keys {
             match key {
                 MyKeys::Left => {
                     self.pos.0 -= 1;
+                    ret = true;
                 }
                 MyKeys::KeyQ => {}
                 MyKeys::Right => {
                     self.pos.0 += 1;
+                    ret = true;
                 }
                 MyKeys::KeyD => {}
                 MyKeys::Up => {
                     self.pos.1 -= 1;
+                    ret = true;
                 }
                 MyKeys::KeyZ => {}
                 MyKeys::Down => {
                     self.pos.1 += 1;
+                    ret = true;
                 }
                 MyKeys::KeyS => {}
                 MyKeys::KeyA => {}
                 MyKeys::KeyE => {}
             }
         }
+        ret
     }
 
     fn draw(&self, pixels: &mut Pixels, width: usize) {
