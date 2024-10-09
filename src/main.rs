@@ -3,8 +3,6 @@ use std::usize;
 use pixels::{Pixels, SurfaceTexture};
 use winit::window::{Window, WindowId};
 
-mod raycast;
-
 fn main() {
     env_logger::init();
 
