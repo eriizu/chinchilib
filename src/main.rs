@@ -20,7 +20,8 @@ fn main() {
     // input, and uses significantly less power/CPU time than ControlFlow::Poll.
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
 
-    let mut app = WinitHandler::default();
+    let moving_pixel = Box::new(MovingPixel::new(100, 100));
+    let mut app = WinitHandler::new(moving_pixel);
     event_loop.run_app(&mut app).unwrap();
 }
 
@@ -62,21 +63,23 @@ impl std::convert::TryFrom<&winit::keyboard::Key> for MyKeys {
 /// Everyting about the window. Pixels and Window are options because they
 /// are constructed on "resume" and cannot be construted earlier
 struct WinitHandler {
-    app: Option<App>,
+    winfbx: Option<WinFbx>,
     height: usize,
     width: usize,
     last_frame: std::time::Instant,
     tick: std::time::Duration,
+    app: Option<Box<dyn GfxApp>>,
 }
 
-impl Default for WinitHandler {
-    fn default() -> Self {
+impl WinitHandler {
+    fn new(app: Box<dyn GfxApp>) -> Self {
         Self {
-            app: None,
+            winfbx: None,
             height: 240,
             width: 320,
             last_frame: std::time::Instant::now(),
             tick: std::time::Duration::from_nanos(16666666),
+            app: Some(app),
         }
     }
 }
@@ -85,14 +88,16 @@ impl winit::application::ApplicationHandler for WinitHandler {
     /// Resume gets called when window gets loaded for the first time
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         log::info!("resumed called");
-        self.app = Some(App::new(event_loop, self.width, self.height));
+        if let Some(app) = self.app.take() {
+            self.winfbx = Some(WinFbx::new(event_loop, self.width, self.height, app));
+        }
     }
 
     /// Instead of redrawing for every event, or every keyprss, we only try to
     /// render after all evens have been processed.
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         let app = self
-            .app
+            .winfbx
             .as_mut()
             .expect("about_to_wait not to be called if window doesn't exist.");
 
@@ -122,7 +127,7 @@ impl winit::application::ApplicationHandler for WinitHandler {
     ) {
         log::debug!("got event {:?}", event);
         let app = self
-            .app
+            .winfbx
             .as_mut()
             .expect("window_event not to be called if window doesn't exist.");
         use winit::event::WindowEvent;
@@ -149,7 +154,7 @@ pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb
     frame.as_rgba_mut()[idx] = color;
 }
 
-struct App {
+struct WinFbx {
     window: Window,
     pixels: Pixels,
     pause: bool,
@@ -157,12 +162,17 @@ struct App {
     width: usize,
     pressed_keys: std::collections::HashSet<MyKeys>,
     released_keys: std::collections::HashSet<MyKeys>,
-    moving_pixel: MovingPixel,
     needs_render: bool,
+    app: Box<dyn GfxApp>,
 }
 
-impl App {
-    fn new(event_loop: &winit::event_loop::ActiveEventLoop, width: usize, height: usize) -> Self {
+impl WinFbx {
+    fn new(
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        width: usize,
+        height: usize,
+        app: Box<dyn GfxApp>,
+    ) -> Self {
         let mut attr = Window::default_attributes();
         let size = winit::dpi::PhysicalSize::new(width as u16, height as u16);
         attr = attr.with_inner_size(size).with_title("Box");
@@ -186,8 +196,8 @@ impl App {
             pause: false,
             pressed_keys: std::collections::HashSet::new(),
             released_keys: std::collections::HashSet::new(),
-            moving_pixel: MovingPixel::new(width / 2, height / 2),
             needs_render: true,
+            app,
         }
     }
 
@@ -195,7 +205,7 @@ impl App {
         log::debug!("redrawing");
 
         if self.needs_render {
-            self.moving_pixel.draw(&mut self.pixels, self.width);
+            self.app.draw(&mut self.pixels, self.width);
 
             if let Err(err) = self.pixels.render() {
                 log::error!("failed to render with error {}", err);
@@ -206,7 +216,7 @@ impl App {
     }
 
     fn on_tick(&mut self) {
-        self.needs_render = self.moving_pixel.on_tick(&self.pressed_keys);
+        self.needs_render = self.app.on_tick(&self.pressed_keys);
         self.pressed_keys
             .retain(|candidate| !self.released_keys.contains(candidate));
         self.released_keys.clear();
@@ -250,6 +260,14 @@ impl App {
     }
 }
 
+trait GfxApp {
+    /// Every tick, this method gets called with currently pressed keys. Released keys during the tick are considered still pressed. But will be removed after this call.
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool;
+
+    /// You get the pixel array, so you can draw on it before the render.
+    fn draw(&self, pixels: &mut Pixels, width: usize);
+}
+
 struct MovingPixel {
     pos: (usize, usize),
 }
@@ -264,7 +282,8 @@ impl MovingPixel {
     fn new(x: usize, y: usize) -> Self {
         Self { pos: (x, y) }
     }
-
+}
+impl GfxApp for MovingPixel {
     fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool {
         let mut ret = false;
         for key in pressed_keys {
