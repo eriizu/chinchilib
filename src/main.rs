@@ -16,52 +16,42 @@ impl MovingPixel {
         Self { pos: (x, y) }
     }
 }
+
+const RED: rgb::RGBA8 = rgb::RGBA8 {
+    r: 255,
+    g: 0,
+    b: 0,
+    a: 255,
+};
+
 impl GfxApp for MovingPixel {
     fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool {
-        let mut ret = false;
+        let mut needs_redraw = true;
         for key in pressed_keys {
             match key {
                 MyKeys::Left => {
                     self.pos.0 -= 1;
-                    ret = true;
                 }
-                MyKeys::KeyQ => {}
                 MyKeys::Right => {
                     self.pos.0 += 1;
-                    ret = true;
                 }
-                MyKeys::KeyD => {}
                 MyKeys::Up => {
                     self.pos.1 -= 1;
-                    ret = true;
                 }
-                MyKeys::KeyZ => {}
                 MyKeys::Down => {
                     self.pos.1 += 1;
-                    ret = true;
                 }
-                MyKeys::KeyS => {}
-                MyKeys::KeyA => {}
-                MyKeys::KeyE => {}
+                _ => {
+                    needs_redraw = false;
+                }
             }
         }
-        ret
+        needs_redraw
     }
 
     fn draw(&self, pixels: &mut Pixels, width: usize) {
         if self.pos.0 * self.pos.1 < pixels.frame().len() {
-            put_pixel1(
-                pixels.frame_mut(),
-                width,
-                self.pos.0,
-                self.pos.1,
-                rgb::RGBA {
-                    r: 255,
-                    g: 0,
-                    b: 0,
-                    a: 255,
-                },
-            );
+            put_pixel1(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
         }
     }
 
