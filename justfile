@@ -1,6 +1,6 @@
 debug:
-	RUST_LOG=chinchilib=debug cargo run
+	RUST_LOG=chinchilib=debug cargo run --example moving_pixel
 
 info:
-	RUST_LOG=chinchilib=info cargo run
+	RUST_LOG=chinchilib=info cargo run --example moving_pixel
 
