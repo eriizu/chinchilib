@@ -1,17 +1,17 @@
 [package]
 name = "chinchilib"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license-file = "LICENSE.txt"
 description = "A graphical prototyping library for my students"
 
 [dependencies]
 array2d = "0.3.2"
-env_logger = "0.11.3"
-log = "0.4.21"
-pixels = "0.13.0"
-rgb = "0.8.37"
-winit = { version = "0.30.0", features = ["rwh_06", "rwh_05", "rwh_04", "x11"], default-features = false }
+env_logger = "0.11.5"
+log = "0.4.22"
+pixels = "0.14.0"
+rgb = "0.8.50"
+winit = { version = "0.30.5", features = ["rwh_06", "rwh_05", "rwh_04", "x11"], default-features = false }
 
 [lints.rust]
 # unused = "allow"
