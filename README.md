@@ -86,7 +86,9 @@ impl GfxApp for MovingPixel {
         }
     }
 
-    /// Moving pixel is never done.
+    /// For the sake of the example, when x goes under 50, we inidcate that we are done and that
+    /// the windows should remain open, when y goes under 50 we indicate that the window should
+    /// close, otherwise we are not done.
     fn done(&self) -> chinchilib::DoneStatus {
         if self.pos.0 < 50 {
             chinchilib::DoneStatus::Remain
