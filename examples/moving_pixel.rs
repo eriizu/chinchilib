@@ -1,5 +1,6 @@
+use chinchilib::pixels::Pixels;
+use chinchilib::rgb;
 use chinchilib::{put_pixel1, GfxApp, MyKeys, WinitHandler};
-use pixels::Pixels;
 
 fn main() {
     env_logger::init();

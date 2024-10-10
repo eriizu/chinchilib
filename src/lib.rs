@@ -1,6 +1,9 @@
 use std::usize;
 
+pub use pixels;
 use pixels::{Pixels, SurfaceTexture};
+pub use rgb;
+pub use winit;
 use winit::window::{Window, WindowId};
 
 /// Mapping for the keys that are recognized. They are centered an AZERTY keyboard's essential keys
