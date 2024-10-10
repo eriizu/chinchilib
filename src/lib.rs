@@ -44,11 +44,12 @@ impl std::convert::TryFrom<&winit::keyboard::Key> for MyKeys {
 /// are constructed on "resume" and cannot be construted earlier
 pub struct WinitHandler {
     winfbx: Option<WinFbx>,
-    height: usize,
     width: usize,
+    height: usize,
     last_frame: std::time::Instant,
     tick: std::time::Duration,
     app: Option<Box<dyn GfxApp>>,
+    cursor_pos: (f64, f64),
 }
 
 fn hz_to_nanosec_period(hz: u16) -> u64 {
@@ -66,15 +67,18 @@ mod test {
 }
 
 impl WinitHandler {
+    /// Create a new handler with an app, a window size and a desired tick rate. Run app with
+    /// `.run()`
     pub fn new(app: Box<dyn GfxApp>, size: (usize, usize), tick_per_second: u16) -> Self {
         let nsec_period = hz_to_nanosec_period(tick_per_second);
         Self {
             winfbx: None,
-            height: 240,
-            width: 320,
+            width: size.0,
+            height: size.1,
             last_frame: std::time::Instant::now(),
             tick: std::time::Duration::from_nanos(nsec_period),
             app: Some(app),
+            cursor_pos: (0.0, 0.0),
         }
     }
 
@@ -145,6 +149,23 @@ impl winit::application::ApplicationHandler for WinitHandler {
                 is_synthetic: _,
             } if event.repeat == false => app.process_kbd_input(event, event_loop),
             WindowEvent::RedrawRequested => app.on_redraw(),
+            WindowEvent::CursorMoved {
+                device_id: _,
+                position,
+            } => {
+                self.cursor_pos = (position.x, position.y);
+            }
+            WindowEvent::MouseInput {
+                device_id: _,
+                state,
+                button: _,
+            } if state.is_pressed() => {
+                log::info!(
+                    "clicked at x: {}, y: {}",
+                    self.cursor_pos.0,
+                    self.cursor_pos.1
+                )
+            }
             _ => {}
         }
     }

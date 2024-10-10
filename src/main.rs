@@ -82,7 +82,7 @@ fn main() {
 
     log::info!("Hello, world!");
 
-    let moving_pixel = Box::new(MovingPixel::new(99, 100));
+    let moving_pixel = Box::new(MovingPixel::new(50, 100));
     let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
     app.run().unwrap();
 }
