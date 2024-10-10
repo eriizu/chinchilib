@@ -1,6 +1,16 @@
 use chinchilib::{put_pixel1, GfxApp, MyKeys, WinitHandler};
 use pixels::Pixels;
 
+fn main() {
+    env_logger::init();
+
+    log::info!("Hello, world!");
+
+    let moving_pixel = Box::new(MovingPixel::new(50, 100));
+    let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
+    app.run().unwrap();
+}
+
 struct MovingPixel {
     pos: (usize, usize),
 }
@@ -65,14 +75,4 @@ impl GfxApp for MovingPixel {
             chinchilib::DoneStatus::NotDone
         }
     }
-}
-
-fn main() {
-    env_logger::init();
-
-    log::info!("Hello, world!");
-
-    let moving_pixel = Box::new(MovingPixel::new(50, 100));
-    let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
-    app.run().unwrap();
 }
