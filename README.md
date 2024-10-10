@@ -19,14 +19,11 @@ It's mostly a wrapper arround pixels and winit that takes care of refresh rate, 
 `WinitHandler` closes the window when the user presses the close button or the escape key.
 
 ```rust
+use chinchilib::pixels::Pixels;
+use chinchilib::rgb;
 use chinchilib::{put_pixel1, GfxApp, MyKeys, WinitHandler};
-use pixels::Pixels;
 
 fn main() {
-    env_logger::init();
-
-    log::info!("Hello, world!");
-
     let moving_pixel = Box::new(MovingPixel::new(50, 100));
     let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
     app.run().unwrap();

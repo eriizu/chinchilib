@@ -1,6 +1,6 @@
 [package]
 name = "chinchilib"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 license-file = "LICENSE.txt"
 description = "A graphical prototyping library for my students"
