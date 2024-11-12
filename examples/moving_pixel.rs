@@ -1,6 +1,6 @@
 use chinchilib::pixels::Pixels;
 use chinchilib::rgb;
-use chinchilib::{put_pixel, GfxApp, MyKeys, WinitHandler};
+use chinchilib::{put_pixel, GfxApp, Key, WinitHandler};
 
 fn main() {
     env_logger::init();
@@ -39,20 +39,20 @@ const RED: rgb::RGBA8 = rgb::RGBA8 {
 };
 
 impl GfxApp for MovingPixel {
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool {
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool {
         let mut needs_redraw = true;
         for key in pressed_keys {
             match key {
-                MyKeys::Left => {
+                Key::Left => {
                     self.pos.0 -= 1;
                 }
-                MyKeys::Right => {
+                Key::Right => {
                     self.pos.0 += 1;
                 }
-                MyKeys::Up => {
+                Key::Up => {
                     self.pos.1 -= 1;
                 }
-                MyKeys::Down => {
+                Key::Down => {
                     self.pos.1 += 1;
                 }
                 _ => {

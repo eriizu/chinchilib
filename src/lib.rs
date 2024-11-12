@@ -10,7 +10,7 @@ use winit::window::{Window, WindowId};
 /// needed for games.
 /// TODO: makes this less centered arround AZERTY
 #[derive(Eq, Hash, PartialEq)]
-pub enum MyKeys {
+pub enum Key {
     KeyA,
     KeyZ,
     KeyE,
@@ -23,21 +23,21 @@ pub enum MyKeys {
     Right,
 }
 
-impl std::convert::TryFrom<&winit::keyboard::Key> for MyKeys {
+impl std::convert::TryFrom<&winit::keyboard::Key> for Key {
     type Error = ();
     fn try_from(value: &winit::keyboard::Key) -> Result<Self, ()> {
-        use winit::keyboard::{Key, NamedKey};
+        use winit::keyboard::{Key as WKey, NamedKey as WNamedKey};
         match value {
-            Key::Named(NamedKey::ArrowLeft) => Some(MyKeys::Left),
-            Key::Named(NamedKey::ArrowRight) => Some(MyKeys::Right),
-            Key::Named(NamedKey::ArrowUp) => Some(MyKeys::Up),
-            Key::Named(NamedKey::ArrowDown) => Some(MyKeys::Down),
-            Key::Character(name) if name == "q" => Some(MyKeys::KeyQ),
-            Key::Character(name) if name == "d" => Some(MyKeys::KeyD),
-            Key::Character(name) if name == "z" => Some(MyKeys::KeyZ),
-            Key::Character(name) if name == "s" => Some(MyKeys::KeyS),
-            Key::Character(name) if name == "a" => Some(MyKeys::KeyA),
-            Key::Character(name) if name == "e" => Some(MyKeys::KeyE),
+            WKey::Named(WNamedKey::ArrowLeft) => Some(Key::Left),
+            WKey::Named(WNamedKey::ArrowRight) => Some(Key::Right),
+            WKey::Named(WNamedKey::ArrowUp) => Some(Key::Up),
+            WKey::Named(WNamedKey::ArrowDown) => Some(Key::Down),
+            WKey::Character(name) if name == "q" => Some(Key::KeyQ),
+            WKey::Character(name) if name == "d" => Some(Key::KeyD),
+            WKey::Character(name) if name == "z" => Some(Key::KeyZ),
+            WKey::Character(name) if name == "s" => Some(Key::KeyS),
+            WKey::Character(name) if name == "a" => Some(Key::KeyA),
+            WKey::Character(name) if name == "e" => Some(Key::KeyE),
             _ => None,
         }
         .ok_or(())
@@ -212,8 +212,8 @@ struct WinFbx {
     pause: bool,
     height: usize,
     width: usize,
-    pressed_keys: std::collections::HashSet<MyKeys>,
-    released_keys: std::collections::HashSet<MyKeys>,
+    pressed_keys: std::collections::HashSet<Key>,
+    released_keys: std::collections::HashSet<Key>,
     needs_render: bool,
     app: Box<dyn GfxApp>,
 }
@@ -326,7 +326,7 @@ pub enum DoneStatus {
 
 pub trait GfxApp {
     /// Every tick, this method gets called with currently pressed keys. Released keys during the tick are considered still pressed. But will be removed after this call.
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool;
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool;
 
     /// You get the pixel array, so you can draw on it before the render.
     fn draw(&self, pixels: &mut Pixels, width: usize);
