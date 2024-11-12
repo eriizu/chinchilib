@@ -21,14 +21,21 @@ It's mostly a wrapper arround pixels and winit that takes care of refresh rate, 
 ```rust
 use chinchilib::pixels::Pixels;
 use chinchilib::rgb;
-use chinchilib::{put_pixel1, GfxApp, MyKeys, WinitHandler};
+use chinchilib::{put_pixel, GfxApp, Key, WinitHandler};
 
 fn main() {
+    env_logger::init();
+
+    log::info!("Hello, world!");
+
     let moving_pixel = Box::new(MovingPixel::new(50, 100));
     let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
+    // We don't have any physics or animations, false helps to preserve performance.
+    app.set_always_tick(false);
     app.run().unwrap();
 }
 
+/// Example app that only feature a pixel that moves.
 struct MovingPixel {
     pos: (usize, usize),
 }
@@ -46,27 +53,27 @@ impl MovingPixel {
 }
 
 const RED: rgb::RGBA8 = rgb::RGBA8 {
-    r: 255,
+    r: u8::MAX,
     g: 0,
     b: 0,
-    a: 255,
+    a: u8::MAX,
 };
 
 impl GfxApp for MovingPixel {
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<MyKeys>) -> bool {
+    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool {
         let mut needs_redraw = true;
         for key in pressed_keys {
             match key {
-                MyKeys::Left => {
+                Key::Left => {
                     self.pos.0 -= 1;
                 }
-                MyKeys::Right => {
+                Key::Right => {
                     self.pos.0 += 1;
                 }
-                MyKeys::Up => {
+                Key::Up => {
                     self.pos.1 -= 1;
                 }
-                MyKeys::Down => {
+                Key::Down => {
                     self.pos.1 += 1;
                 }
                 _ => {
@@ -79,7 +86,7 @@ impl GfxApp for MovingPixel {
 
     fn draw(&self, pixels: &mut Pixels, width: usize) {
         if self.pos.0 * self.pos.1 < pixels.frame().len() {
-            put_pixel1(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
+            put_pixel(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
         }
     }
 
