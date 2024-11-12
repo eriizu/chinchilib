@@ -8,6 +8,7 @@ use winit::window::{Window, WindowId};
 
 /// Mapping for the keys that are recognized. They are centered an AZERTY keyboard's essential keys
 /// needed for games.
+/// TODO: makes this less centered arround AZERTY
 #[derive(Eq, Hash, PartialEq)]
 pub enum MyKeys {
     KeyA,
@@ -51,6 +52,10 @@ pub struct WinitHandler {
     height: usize,
     last_frame: std::time::Instant,
     tick: std::time::Duration,
+    /// Set to true if your app has something special to do at every tick even if there are no user
+    /// events. This can be used if you have physics or an animation to run. Defaults to false to
+    /// preserve performance.
+    always_tick: bool,
     app: Option<Box<dyn GfxApp>>,
     cursor_pos: (f64, f64),
 }
@@ -64,7 +69,7 @@ fn hz_to_nanosec_period(hz: u16) -> u64 {
 mod test {
     #[test]
     fn hz_to_nanosec_period() {
-        assert_eq!(super::hz_to_nanosec_period(60), 16666666);
+        assert_eq!(super::hz_to_nanosec_period(60), 16_666_666);
         assert_eq!(super::hz_to_nanosec_period(1), 1_000_000_000);
     }
 }
@@ -82,17 +87,25 @@ impl WinitHandler {
             tick: std::time::Duration::from_nanos(nsec_period),
             app: Some(app),
             cursor_pos: (0.0, 0.0),
+            always_tick: false,
         }
     }
 
     pub fn run(&mut self) -> Result<(), winit::error::EventLoopError> {
         let event_loop = winit::event_loop::EventLoop::new()?;
 
-        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-        // event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+        // event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
 
         event_loop.run_app(self)?;
         Ok(())
+    }
+
+    /// Set to true if your app has something special to do at every tick even if there are no user
+    /// events. This can be used if you have physics or an animation to run. Defaults to false to
+    /// preserve performance.
+    pub fn set_always_tick(&mut self, val: bool) {
+        self.always_tick = val;
     }
 }
 
@@ -118,14 +131,25 @@ impl winit::application::ApplicationHandler for WinitHandler {
             return;
         }
         let now = std::time::Instant::now();
-        let duration_from = now.duration_since(self.last_frame);
-        if duration_from >= self.tick {
+        let duration_from_last_tick = now.duration_since(self.last_frame);
+        // If time since last tick is greater or equal than tickrate, we want to prompt that app
+        // for a redraw.
+        // Otherwise if they are key pressed we wait for next tick. If none are pressed we wait
+        // until we get an event.
+        // TODO: condition this behaviour to a flag
+        if duration_from_last_tick >= self.tick {
             self.last_frame = now;
             app.on_tick();
             app.window.request_redraw();
         } else {
-            let duration_to = self.tick - duration_from;
-            std::thread::sleep(duration_to);
+            if self.always_tick || !app.pressed_keys.is_empty() {
+                let duration_to_next_tick = self.tick - duration_from_last_tick;
+                event_loop.set_control_flow(winit::event_loop::ControlFlow::WaitUntil(
+                    now + duration_to_next_tick,
+                ));
+            } else {
+                event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
+            }
         }
     }
 
@@ -174,7 +198,7 @@ impl winit::application::ApplicationHandler for WinitHandler {
     }
 }
 
-pub fn put_pixel1(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
+pub fn put_pixel(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
     use rgb::*;
     let idx = width * y + x;
     frame.as_rgba_mut()[idx] = color;

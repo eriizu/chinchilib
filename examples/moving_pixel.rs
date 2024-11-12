@@ -1,6 +1,6 @@
 use chinchilib::pixels::Pixels;
 use chinchilib::rgb;
-use chinchilib::{put_pixel1, GfxApp, MyKeys, WinitHandler};
+use chinchilib::{put_pixel, GfxApp, MyKeys, WinitHandler};
 
 fn main() {
     env_logger::init();
@@ -9,9 +9,12 @@ fn main() {
 
     let moving_pixel = Box::new(MovingPixel::new(50, 100));
     let mut app = WinitHandler::new(moving_pixel, (500, 500), 60);
+    // We don't have any physics or animations, false helps to preserve performance.
+    app.set_always_tick(false);
     app.run().unwrap();
 }
 
+/// Example app that only feature a pixel that moves.
 struct MovingPixel {
     pos: (usize, usize),
 }
@@ -29,10 +32,10 @@ impl MovingPixel {
 }
 
 const RED: rgb::RGBA8 = rgb::RGBA8 {
-    r: 255,
+    r: u8::MAX,
     g: 0,
     b: 0,
-    a: 255,
+    a: u8::MAX,
 };
 
 impl GfxApp for MovingPixel {
@@ -62,7 +65,7 @@ impl GfxApp for MovingPixel {
 
     fn draw(&self, pixels: &mut Pixels, width: usize) {
         if self.pos.0 * self.pos.1 < pixels.frame().len() {
-            put_pixel1(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
+            put_pixel(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
         }
     }
 
