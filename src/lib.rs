@@ -8,7 +8,8 @@ use winit::window::{Window, WindowId};
 
 /// Mapping for the keys that are recognized. They are centered an AZERTY keyboard's essential keys
 /// needed for games.
-/// TODO: makes this less centered arround AZERTY
+/// TODO: for keys that correspondond to a character, use a unique enum variant that contains a
+/// SmolStr.
 #[derive(Eq, Hash, PartialEq)]
 pub enum Key {
     KeyA,
@@ -17,6 +18,9 @@ pub enum Key {
     KeyQ,
     KeyS,
     KeyD,
+    KeyW,
+    KeyX,
+    KeyC,
     Up,
     Down,
     Left,
@@ -38,6 +42,9 @@ impl std::convert::TryFrom<&winit::keyboard::Key> for Key {
             WKey::Character(name) if name == "s" => Some(Key::KeyS),
             WKey::Character(name) if name == "a" => Some(Key::KeyA),
             WKey::Character(name) if name == "e" => Some(Key::KeyE),
+            WKey::Character(name) if name == "w" => Some(Key::KeyW),
+            WKey::Character(name) if name == "x" => Some(Key::KeyX),
+            WKey::Character(name) if name == "c" => Some(Key::KeyC),
             _ => None,
         }
         .ok_or(())
