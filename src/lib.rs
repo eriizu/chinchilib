@@ -336,7 +336,7 @@ pub trait GfxApp {
     fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool;
 
     /// You get the pixel array, so you can draw on it before the render.
-    fn draw(&self, pixels: &mut Pixels, width: usize);
+    fn draw(&mut self, pixels: &mut Pixels, width: usize);
 
     /// Indicate if the app logic is done and if the program should remain or exit. For oneshot
     /// drawing, return `DoneStatus::Remain` so that the result stays on screen.
