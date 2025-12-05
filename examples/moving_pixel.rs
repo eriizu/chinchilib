@@ -39,7 +39,11 @@ const RED: rgb::RGBA8 = rgb::RGBA8 {
 };
 
 impl GfxApp for MovingPixel {
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool {
+    fn on_tick(
+        &mut self,
+        pressed_keys: &std::collections::HashSet<Key>,
+        window_size: (usize, usize),
+    ) -> bool {
         let mut needs_redraw = true;
         for key in pressed_keys {
             match key {
