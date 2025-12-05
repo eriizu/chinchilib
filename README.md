@@ -1,6 +1,6 @@
 # Chinchilib
 
-A rust *hommage* to the [Bunny Library](https://github.com/Damdoshi/LibLapin) designed for teaching the fundamentals of graphical programming, such as how to place a pixel and draw lines when given an array of memory that will rendered to screen.
+A rust _hommage_ to the [Bunny Library](https://github.com/Damdoshi/LibLapin) designed for teaching the fundamentals of graphical programming, such as how to place a pixel and draw lines when given an array of memory that will rendered to screen.
 
 It's mostly a wrapper arround pixels and winit that takes care of refresh rate, and keeps track of a set of pressed keys.
 
@@ -9,6 +9,7 @@ It's mostly a wrapper arround pixels and winit that takes care of refresh rate, 
 `WinitHandler` creates a window for you and manages events and timing. You can package your code into a `chinchilib::GfxApp` implementing struct such as `MovingPixel` in the example bellow.
 
 `WinitHandler` will make calls to:
+
 - `on_tick` when its time for updating your state with the keys that are pressed right now (or have been pressed in between ticks), return `true` when you want `draw` to be called afterwards;
 - `draw` when its time to modify the framebuffer so that the image on screen changes;
 - `done` when it wants to know if your app has anything left to do:
@@ -84,7 +85,7 @@ impl GfxApp for MovingPixel {
         needs_redraw
     }
 
-    fn draw(&self, pixels: &mut Pixels, width: usize) {
+    fn draw(&mut self, pixels: &mut Pixels, width: usize) {
         if self.pos.0 * self.pos.1 < pixels.frame().len() {
             put_pixel(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
         }
