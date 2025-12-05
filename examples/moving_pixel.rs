@@ -63,7 +63,7 @@ impl GfxApp for MovingPixel {
         needs_redraw
     }
 
-    fn draw(&self, pixels: &mut Pixels, width: usize) {
+    fn draw(&mut self, pixels: &mut Pixels, width: usize) {
         if self.pos.0 * self.pos.1 < pixels.frame().len() {
             put_pixel(pixels.frame_mut(), width, self.pos.0, self.pos.1, RED);
         }
