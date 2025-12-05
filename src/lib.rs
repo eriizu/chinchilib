@@ -55,8 +55,8 @@ impl std::convert::TryFrom<&winit::keyboard::Key> for Key {
 /// are constructed on "resume" and cannot be construted earlier
 pub struct WinitHandler {
     winfbx: Option<WinFbx>,
-    width: usize,
-    height: usize,
+    pub width: usize,
+    pub height: usize,
     last_frame: std::time::Instant,
     tick: std::time::Duration,
     /// Set to true if your app has something special to do at every tick even if there are no user
@@ -278,7 +278,9 @@ impl WinFbx {
 
     fn on_tick(&mut self) {
         if self.app.done() == DoneStatus::NotDone {
-            self.needs_render = self.app.on_tick(&self.pressed_keys);
+            self.needs_render = self
+                .app
+                .on_tick(&self.pressed_keys, (self.width, self.height));
         }
         self.pressed_keys
             .retain(|candidate| !self.released_keys.contains(candidate));
@@ -333,7 +335,11 @@ pub enum DoneStatus {
 
 pub trait GfxApp {
     /// Every tick, this method gets called with currently pressed keys. Released keys during the tick are considered still pressed. But will be removed after this call.
-    fn on_tick(&mut self, pressed_keys: &std::collections::HashSet<Key>) -> bool;
+    fn on_tick(
+        &mut self,
+        pressed_keys: &std::collections::HashSet<Key>,
+        window_size: (usize, usize),
+    ) -> bool;
 
     /// You get the pixel array, so you can draw on it before the render.
     fn draw(&mut self, pixels: &mut Pixels, width: usize);
