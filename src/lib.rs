@@ -205,6 +205,12 @@ impl winit::application::ApplicationHandler for WinitHandler {
     }
 }
 
+pub fn get_pixel(frame: &[u8], width: usize, x: usize, y: usize) -> rgb::RGBA8 {
+    use rgb::*;
+    let idx = y * width + x;
+    frame.as_rgba()[idx]
+}
+
 pub fn put_pixel(frame: &mut [u8], width: usize, x: usize, y: usize, color: rgb::RGBA8) {
     use rgb::*;
     let idx = width * y + x;
