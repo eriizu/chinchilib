@@ -6,7 +6,7 @@ It's mostly a wrapper arround pixels and winit that takes care of refresh rate, 
 
 # Usage
 
-`chinchilib` two functions are public in the library, one getter and one to compute on the window:
+`chinchilib` exposes two public functions for pixel access:
 
 - `get_pixel`\
   _Return the color `RGBA8` of a pixel at coordinates (x, y)_.\
