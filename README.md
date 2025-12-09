@@ -8,21 +8,21 @@ It's mostly a wrapper arround pixels and winit that takes care of refresh rate, 
 
 `chinchilib` two functions are public in the library, one getter and one to compute on the window:
 
-- `get_pixel`
-  _Return the color `RGBA8` of a pixel at coordinates (x, y)_.
+- `get_pixel`\
+  _Return the color `RGBA8` of a pixel at coordinates (x, y)_.\
+  **The caller must ensure the coordinates are within bounds**\
   Parameters:
   - `frame: &[u8]` - image buffer encoded in `RGBA8`
   - `width: usize` - image width in pixels
   - `x, y: usize` - pixel coordinates
-    **The caller must ensure the coordinates are within bounds**
-- `put_pixel`
-  _Set the color of a pixel at coordinates (x, y)_.
+- `put_pixel`\
+  _Set the color of a pixel at coordinates (x, y)_.\
+  **The caller must ensure the coordinates are within bounds**\
   Parameters:
   - `frame: &mut [u8]` - mutable image buffer encoded in `RGBA8`
   - `width: usize` - image width in pixels
   - `x, y: usize` - pixel coordinates
   - `color: rgb::RGBA8` - new pixel color
-    **The caller must ensure the coordinates are within bounds**
 
 `WinitHandler` creates a window for you and manages events and timing. You can package your code into a `chinchilib::GfxApp` implementing struct such as `MovingPixel` in the example bellow.
 
