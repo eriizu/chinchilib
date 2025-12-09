@@ -55,8 +55,8 @@ impl std::convert::TryFrom<&winit::keyboard::Key> for Key {
 /// are constructed on "resume" and cannot be construted earlier
 pub struct WinitHandler {
     winfbx: Option<WinFbx>,
-    pub width: usize,
-    pub height: usize,
+    width: usize,
+    height: usize,
     last_frame: std::time::Instant,
     tick: std::time::Duration,
     /// Set to true if your app has something special to do at every tick even if there are no user
